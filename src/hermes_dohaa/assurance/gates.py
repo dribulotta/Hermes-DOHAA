@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Proposal
@@ -83,3 +83,17 @@ class RequiredEvidenceGate:
             "All contract-required evidence IDs are present",
             tuple(sorted(required)),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ResultEqualsGate:
+    """Require the proposal result to equal a controller-owned expected value."""
+
+    expected: Any
+    name: str = "result_equals"
+
+    def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
+        del contract
+        if proposal.result != self.expected:
+            return GateResult(self.name, False, "Proposal result does not equal the expected value")
+        return GateResult(self.name, True, "Proposal result equals the expected value")
