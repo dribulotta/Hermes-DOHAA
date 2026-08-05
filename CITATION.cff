@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use Hermes-DOHAA, please cite this software and the DOHAA architecture paper."
+title: "Hermes-DOHAA"
+type: software
+version: 0.1.0-alpha.1
+date-released: 2026-08-05
+authors:
+  - family-names: Ribulotta
+    given-names: Dante Guillermo
+license: Apache-2.0
+repository-code: "https://github.com/dribulotta/Hermes-DOHAA"
+keywords:
+  - agentic architecture
+  - deterministic orchestration
+  - AI governance
+  - evidence
+  - Hermes Agent
+references:
+  - type: article
+    title: "Arquitectura Agéntica Híbrida con Orquestación Determinista (AAHOD)"
+    authors:
+      - family-names: Ribulotta
+        given-names: Dante Guillermo
+    doi: "10.5281/zenodo.21628049"
+    year: 2026

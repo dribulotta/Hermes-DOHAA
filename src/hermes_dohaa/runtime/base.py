@@ -1,0 +1,107 @@
+"""Runtime-neutral proposal types."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from typing import Any, Mapping, Protocol, Sequence
+
+from hermes_dohaa.contracts.models import TaskContract
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceItem:
+    evidence_id: str
+    kind: str
+    source: str
+    content: Any
+    sha256: str
+
+    @classmethod
+    def create(cls, evidence_id: str, kind: str, source: str, content: Any) -> "EvidenceItem":
+        canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return cls(evidence_id, kind, source, content, digest)
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "EvidenceItem":
+        return cls.create(
+            _text(raw, "evidence_id"),
+            _text(raw, "kind"),
+            _text(raw, "source"),
+            raw.get("content"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Claim:
+    statement: str
+    evidence_ids: tuple[str, ...]
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "Claim":
+        evidence_ids = raw.get("evidence_ids")
+        if not isinstance(evidence_ids, list) or any(not isinstance(item, str) for item in evidence_ids):
+            raise ValueError("claim evidence_ids must be a list of strings")
+        return cls(_text(raw, "statement"), tuple(evidence_ids))
+
+
+@dataclass(frozen=True, slots=True)
+class Proposal:
+    result: Any
+    claims: tuple[Claim, ...] = ()
+    evidence: tuple[EvidenceItem, ...] = ()
+    requested_actions: tuple[str, ...] = ()
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "Proposal":
+        claims_raw = raw.get("claims", [])
+        evidence_raw = raw.get("evidence", [])
+        actions_raw = raw.get("requested_actions", [])
+        if not isinstance(claims_raw, list) or not all(isinstance(item, dict) for item in claims_raw):
+            raise ValueError("proposal claims must be a list of objects")
+        if not isinstance(evidence_raw, list) or not all(isinstance(item, dict) for item in evidence_raw):
+            raise ValueError("proposal evidence must be a list of objects")
+        if not isinstance(actions_raw, list) or any(not isinstance(item, str) for item in actions_raw):
+            raise ValueError("proposal requested_actions must be a list of strings")
+        return cls(
+            result=raw.get("result"),
+            claims=tuple(Claim.from_dict(item) for item in claims_raw),
+            evidence=tuple(EvidenceItem.from_dict(item) for item in evidence_raw),
+            requested_actions=tuple(actions_raw),
+        )
+
+    def fingerprint(self) -> str:
+        raw = {
+            "result": self.result,
+            "claims": [
+                {"statement": item.statement, "evidence_ids": list(item.evidence_ids)}
+                for item in self.claims
+            ],
+            "evidence": [
+                {
+                    "evidence_id": item.evidence_id,
+                    "kind": item.kind,
+                    "source": item.source,
+                    "content": item.content,
+                    "sha256": item.sha256,
+                }
+                for item in self.evidence
+            ],
+            "requested_actions": list(self.requested_actions),
+        }
+        canonical = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class AgentRuntime(Protocol):
+    def propose(self, contract: TaskContract, feedback: Sequence[str]) -> Proposal:
+        """Return an untrusted proposal. The controller retains authority."""
+
+
+def _text(raw: Mapping[str, Any], key: str) -> str:
+    value = raw.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{key} must be a non-empty string")
+    return value.strip()

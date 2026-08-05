@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "meeting-summary-001",
+  "objective": "Produce a source-grounded executive summary from an approved transcript.",
+  "inputs": {
+    "transcript_path": "artifacts/conversation.txt"
+  },
+  "constraints": [
+    "Use only the supplied transcript.",
+    "Do not infer identities that are not established by evidence."
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion_id": "source-grounding",
+      "description": "Every factual claim is traceable to the transcript artifact.",
+      "required_evidence": ["transcript-sha256"]
+    }
+  ],
+  "allowed_actions": ["artifact.read", "report.propose"],
+  "forbidden_actions": ["external.publish", "source.delete"],
+  "risk_level": "medium",
+  "max_attempts": 3,
+  "requires_human_approval": false
+}
