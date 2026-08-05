@@ -11,7 +11,8 @@ from hermes_dohaa.runtime.base import Proposal
 
 
 def exact_smoke_proposal(runtime, contract, feedback):
-    del runtime, feedback
+    del feedback
+    exact_smoke_proposal.runtime = runtime
     return Proposal(result=dict(contract.inputs["expected_result"]))
 
 
@@ -25,7 +26,19 @@ class CliTests(unittest.TestCase):
                 autospec=True,
                 side_effect=exact_smoke_proposal,
             ), redirect_stdout(output):
-                exit_code = main(["smoke", "--ledger", str(ledger)])
+                exit_code = main(
+                    [
+                        "smoke",
+                        "--ledger",
+                        str(ledger),
+                        "--hermes-model",
+                        "dohaa-runtime",
+                        "--reasoning-effort",
+                        "none",
+                        "--hermes-timeout-seconds",
+                        "45",
+                    ]
+                )
 
         payload = json.loads(output.getvalue())
         self.assertEqual(exit_code, 0)
@@ -37,8 +50,17 @@ class CliTests(unittest.TestCase):
                 "no_actions_requested": True,
                 "ledger_chain_valid": True,
                 "scope": "connectivity-and-control-plane-only",
+                "runtime_policy": {
+                    "model": "dohaa-runtime",
+                    "reasoning_effort": "none",
+                    "timeout_seconds": 45.0,
+                },
             },
         )
+        runtime = exact_smoke_proposal.runtime
+        self.assertEqual(runtime.model, "dohaa-runtime")
+        self.assertEqual(runtime.reasoning_effort, "none")
+        self.assertEqual(runtime.timeout_seconds, 45.0)
 
 
 if __name__ == "__main__":

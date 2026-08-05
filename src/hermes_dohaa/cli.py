@@ -21,6 +21,33 @@ from hermes_dohaa.evidence.ledger import EvidenceLedger
 from hermes_dohaa.runtime.hermes_api import HermesApiRuntime
 
 
+_REASONING_EFFORT_CHOICES = ("none", "minimal", "low", "medium", "high", "xhigh")
+
+
+def _add_runtime_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    default_reasoning_effort: str | None,
+) -> None:
+    parser.add_argument("--hermes-url", default="http://127.0.0.1:8642")
+    parser.add_argument("--hermes-model", default="hermes-agent")
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=_REASONING_EFFORT_CHOICES,
+        default=default_reasoning_effort,
+    )
+    parser.add_argument("--hermes-timeout-seconds", type=float, default=300.0)
+
+
+def _runtime_from_args(args: argparse.Namespace) -> HermesApiRuntime:
+    return HermesApiRuntime(
+        base_url=args.hermes_url,
+        model=args.hermes_model,
+        timeout_seconds=args.hermes_timeout_seconds,
+        reasoning_effort=args.reasoning_effort,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hermes-dohaa")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -30,14 +57,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser("run", help="Run a task contract through Hermes and DOHAA gates")
     run.add_argument("contract", type=Path)
-    run.add_argument("--hermes-url", default="http://127.0.0.1:8642")
+    _add_runtime_arguments(run, default_reasoning_effort=None)
     run.add_argument("--ledger", type=Path, default=Path(".dohaa/evidence.sqlite3"))
     run.add_argument("--human-approved", action="store_true")
 
     smoke = subparsers.add_parser(
         "smoke", help="Run a non-mutating live integration test against Hermes"
     )
-    smoke.add_argument("--hermes-url", default="http://127.0.0.1:8642")
+    _add_runtime_arguments(smoke, default_reasoning_effort="none")
     smoke.add_argument("--ledger", type=Path, default=Path(".dohaa/smoke.sqlite3"))
     return parser
 
@@ -57,7 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps({"valid": True, "contract_id": contract.contract_id}))
         return 0
 
-    runtime = HermesApiRuntime(base_url=args.hermes_url)
+    runtime = _runtime_from_args(args)
     gates = (ActionPolicyGate(), ClaimEvidenceGate(), RequiredEvidenceGate())
     with EvidenceLedger(args.ledger) as ledger:
         result = DohaaController(runtime, gates, ledger).run(
@@ -115,7 +142,7 @@ def _run_smoke(args: argparse.Namespace) -> int:
             "requires_human_approval": False,
         }
     )
-    runtime = HermesApiRuntime(base_url=args.hermes_url)
+    runtime = _runtime_from_args(args)
     gates = (
         ResultEqualsGate(expected),
         ActionPolicyGate(),
@@ -133,6 +160,11 @@ def _run_smoke(args: argparse.Namespace) -> int:
         and not result.proposal.requested_actions,
         "ledger_chain_valid": chain_valid,
         "scope": "connectivity-and-control-plane-only",
+        "runtime_policy": {
+            "model": runtime.model,
+            "reasoning_effort": runtime.reasoning_effort,
+            "timeout_seconds": runtime.timeout_seconds,
+        },
     }
     print(json.dumps(payload, ensure_ascii=False, default=str))
     return 0 if result.status.value == "succeeded" else 1
