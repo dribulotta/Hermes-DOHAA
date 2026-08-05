@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dribulotta/Hermes-DOHAA/schemas/task-contract.schema.json",
+  "title": "DOHAA Task Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_id", "objective", "acceptance_criteria"],
+  "properties": {
+    "schema_version": {"const": "1.0", "default": "1.0"},
+    "contract_id": {"type": "string", "minLength": 1},
+    "objective": {"type": "string", "minLength": 1},
+    "inputs": {"type": "object", "default": {}},
+    "constraints": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "default": []
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion_id", "description"],
+        "properties": {
+          "criterion_id": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "required_evidence": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "default": []
+          }
+        }
+      }
+    },
+    "allowed_actions": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "default": []
+    },
+    "forbidden_actions": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "default": []
+    },
+    "risk_level": {
+      "enum": ["low", "medium", "high", "critical"],
+      "default": "low"
+    },
+    "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
+    "requires_human_approval": {"type": "boolean", "default": false}
+  }
+}
