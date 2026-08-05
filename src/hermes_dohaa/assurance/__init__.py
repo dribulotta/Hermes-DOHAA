@@ -1,4 +1,11 @@
-from .gates import ActionPolicyGate, ClaimEvidenceGate, Gate, GateResult, RequiredEvidenceGate
+from .gates import (
+    ActionPolicyGate,
+    ClaimEvidenceGate,
+    Gate,
+    GateResult,
+    RequiredEvidenceGate,
+    ResultEqualsGate,
+)
 
 __all__ = [
     "ActionPolicyGate",
@@ -6,4 +13,5 @@ __all__ = [
     "Gate",
     "GateResult",
     "RequiredEvidenceGate",
+    "ResultEqualsGate",
 ]
