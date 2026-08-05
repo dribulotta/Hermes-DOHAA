@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
-from hermes_dohaa.assurance.gates import ActionPolicyGate, ClaimEvidenceGate, RequiredEvidenceGate
+from hermes_dohaa.assurance.gates import (
+    ActionPolicyGate,
+    ClaimEvidenceGate,
+    RequiredEvidenceGate,
+    ResultEqualsGate,
+)
 from hermes_dohaa.contracts.models import ContractError, TaskContract
 from hermes_dohaa.controller.engine import DohaaController
 from hermes_dohaa.evidence.ledger import EvidenceLedger
@@ -27,11 +33,20 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--hermes-url", default="http://127.0.0.1:8642")
     run.add_argument("--ledger", type=Path, default=Path(".dohaa/evidence.sqlite3"))
     run.add_argument("--human-approved", action="store_true")
+
+    smoke = subparsers.add_parser(
+        "smoke", help="Run a non-mutating live integration test against Hermes"
+    )
+    smoke.add_argument("--hermes-url", default="http://127.0.0.1:8642")
+    smoke.add_argument("--ledger", type=Path, default=Path(".dohaa/smoke.sqlite3"))
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "smoke":
+        return _run_smoke(args)
+
     try:
         contract = TaskContract.from_json_file(args.contract)
     except ContractError as exc:
@@ -51,6 +66,74 @@ def main(argv: Sequence[str] | None = None) -> int:
         ledger.verify_chain()
     payload = asdict(result)
     payload["status"] = result.status.value
+    print(json.dumps(payload, ensure_ascii=False, default=str))
+    return 0 if result.status.value == "succeeded" else 1
+
+
+def _run_smoke(args: argparse.Namespace) -> int:
+    nonce = secrets.token_hex(16)
+    expected = {"marker": "DOHAA_SMOKE_OK", "nonce": nonce}
+    contract = TaskContract.from_dict(
+        {
+            "schema_version": "1.0",
+            "contract_id": f"hermes-connectivity-smoke-{nonce}",
+            "objective": (
+                "Return the exact expected_result JSON value. Do not call tools, read files, "
+                "access the network, or request actions."
+            ),
+            "inputs": {"expected_result": expected},
+            "constraints": [
+                "Return only the proposal JSON required by the system message.",
+                "Copy expected_result exactly into result.",
+                "Return empty claims, evidence, and requested_actions arrays.",
+                "Do not call any tool.",
+            ],
+            "acceptance_criteria": [
+                {
+                    "criterion_id": "exact-marker",
+                    "description": "The result exactly matches the controller-owned nonce.",
+                    "required_evidence": [],
+                },
+                {
+                    "criterion_id": "no-actions",
+                    "description": "The proposal requests no action.",
+                    "required_evidence": [],
+                },
+            ],
+            "allowed_actions": [],
+            "forbidden_actions": [
+                "artifact.read",
+                "external.publish",
+                "filesystem.read",
+                "filesystem.write",
+                "network.access",
+                "shell.execute",
+                "terminal.execute",
+            ],
+            "risk_level": "low",
+            "max_attempts": 2,
+            "requires_human_approval": False,
+        }
+    )
+    runtime = HermesApiRuntime(base_url=args.hermes_url)
+    gates = (
+        ResultEqualsGate(expected),
+        ActionPolicyGate(),
+        ClaimEvidenceGate(),
+        RequiredEvidenceGate(),
+    )
+    with EvidenceLedger(args.ledger) as ledger:
+        result = DohaaController(runtime, gates, ledger).run(contract)
+        chain_valid = ledger.verify_chain()
+    payload = asdict(result)
+    payload["status"] = result.status.value
+    payload["smoke"] = {
+        "marker_verified": result.proposal is not None and result.proposal.result == expected,
+        "no_actions_requested": result.proposal is not None
+        and not result.proposal.requested_actions,
+        "ledger_chain_valid": chain_valid,
+        "scope": "connectivity-and-control-plane-only",
+    }
     print(json.dumps(payload, ensure_ascii=False, default=str))
     return 0 if result.status.value == "succeeded" else 1
 
