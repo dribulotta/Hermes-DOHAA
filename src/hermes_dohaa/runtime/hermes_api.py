@@ -72,7 +72,7 @@ class HermesApiRuntime:
                 }
             }
         request = urllib.request.Request(
-            f"{self.base_url.rstrip('/')}/v1/chat/completions",
+            self._chat_completions_url(),
             data=json.dumps(body).encode("utf-8"),
             method="POST",
             headers=self._headers(),
@@ -88,6 +88,13 @@ class HermesApiRuntime:
         except (KeyError, IndexError, TypeError) as exc:
             raise HermesApiError("Hermes API response did not contain choices[0].message.content") from exc
         return parse_proposal_content(content)
+
+    def _chat_completions_url(self) -> str:
+        """Build the endpoint while accepting base URLs with or without /v1."""
+        base_url = self.base_url.rstrip("/")
+        if base_url.endswith("/v1"):
+            return f"{base_url}/chat/completions"
+        return f"{base_url}/v1/chat/completions"
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
