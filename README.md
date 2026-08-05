@@ -4,6 +4,20 @@ Hermes-DOHAA is an evidence-gated governance and bounded self-improvement layer 
 
 > **Status:** pre-alpha research prototype. It is not yet a production authorization system.
 
+## Where DOHAA comes from
+
+**DOHAA** stands for **Deterministically Orchestrated Hybrid Agentic Architecture**. It is the English formulation of **AAHOD - Arquitectura Agéntica Híbrida con Orquestación Determinista**, a vendor-independent architectural pattern proposed and formalized by Dante Guillermo Ribulotta.
+
+The architecture is described in the following paper:
+
+> Dante Guillermo Ribulotta. *Arquitectura Agéntica Híbrida con Orquestación Determinista (AAHOD): un patrón para sistemas de inteligencia artificial confiables, auditables y de calidad estable.* Preprint v1.0, July 27, 2026. [https://doi.org/10.5281/zenodo.21628049](https://doi.org/10.5281/zenodo.21628049)
+
+AAHOD/DOHAA emerged from operational constraints involving inference budgets, latency, queues, continuity, validation, and traceability. It generalizes an earlier public tri-layer architecture into an explicit distribution of authority across control, cognition, assurance, evidence, and action.
+
+Hermes-DOHAA is **not the architecture itself and DOHAA is not a Hermes feature**. This repository is an open-source reference implementation that applies part of the architecture to Hermes Agent. The paper is a non-peer-reviewed preprint and defines an empirical validation protocol; neither the paper nor this repository should be read as proof that DOHAA is already superior to alternative architectures.
+
+See [Origin and theoretical foundations](docs/origin-and-foundations.md) for the complete provenance, formal definition, implementation mapping, and scientific status.
+
 ## Why this project exists
 
 LLM agents are effective at proposing plans, diagnosing failures, and generating candidate repairs. They are not a reliable authority for deciding whether their own work is correct or safe. Hermes-DOHAA therefore treats every model output as an **untrusted proposal** and keeps acceptance, retry, escalation, and durable evidence under deterministic program control.
@@ -76,7 +90,7 @@ The proposal phase must use a restricted Hermes profile and a sandbox. A prompt 
 7. Failure reduces capability rather than integrity.
 8. Learned changes move through quarantine, evaluation, shadow use, promotion, and rollback.
 
-See [Architecture](docs/architecture.md), [Threat model](docs/threat-model.md), and [ADR-0001](docs/adr/0001-independent-control-plane.md).
+See [Origin and theoretical foundations](docs/origin-and-foundations.md), [Architecture](docs/architecture.md), [Threat model](docs/threat-model.md), and [ADR-0001](docs/adr/0001-independent-control-plane.md).
 
 ## Roadmap
 
