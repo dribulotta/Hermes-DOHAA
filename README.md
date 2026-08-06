@@ -38,6 +38,7 @@ The `v0.1` bootstrap implements:
 - deterministic action-policy and evidence-reference gates;
 - a tamper-evident SQLite event ledger;
 - retry, no-progress termination, and human escalation;
+- structured verifier feedback and stable terminal reason codes;
 - a standard-library-only runtime with unit and integration tests.
 
 ```mermaid

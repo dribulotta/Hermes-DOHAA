@@ -95,8 +95,43 @@ class Proposal:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+@dataclass(frozen=True, slots=True)
+class VerifierFeedback:
+    gate: str
+    code: str
+    reason: str
+    evidence_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for field_name in ("gate", "code", "reason"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"feedback {field_name} must be a non-empty string"
+                )
+        if any(
+            not isinstance(item, str) or not item.strip()
+            for item in self.evidence_ids
+        ):
+            raise ValueError(
+                "feedback evidence_ids must contain non-empty strings"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "gate": self.gate,
+            "code": self.code,
+            "reason": self.reason,
+            "evidence_ids": list(self.evidence_ids),
+        }
+
+
 class AgentRuntime(Protocol):
-    def propose(self, contract: TaskContract, feedback: Sequence[str]) -> Proposal:
+    def propose(
+        self,
+        contract: TaskContract,
+        feedback: Sequence[VerifierFeedback],
+    ) -> Proposal:
         """Return an untrusted proposal. The controller retains authority."""
 
 

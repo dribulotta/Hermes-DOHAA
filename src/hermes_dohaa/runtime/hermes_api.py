@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from hermes_dohaa.contracts.models import TaskContract
-from hermes_dohaa.runtime.base import Proposal
+from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
 
 
 _REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
@@ -42,7 +42,11 @@ class HermesApiRuntime:
                 raise ValueError(f"reasoning_effort must be one of: {allowed}")
             self.reasoning_effort = normalized
 
-    def propose(self, contract: TaskContract, feedback: Sequence[str]) -> Proposal:
+    def propose(
+        self,
+        contract: TaskContract,
+        feedback: Sequence[VerifierFeedback | str],
+    ) -> Proposal:
         body = {
             "model": self.model,
             "stream": False,
@@ -56,7 +60,12 @@ class HermesApiRuntime:
                     "content": json.dumps(
                         {
                             "task_contract": contract.to_dict(),
-                            "verifier_feedback": list(feedback),
+                            "verifier_feedback": [
+                                item.to_dict()
+                                if isinstance(item, VerifierFeedback)
+                                else item
+                                for item in feedback
+                            ],
                         },
                         ensure_ascii=False,
                         sort_keys=True,
