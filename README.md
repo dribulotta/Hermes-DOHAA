@@ -77,6 +77,14 @@ hermes-dohaa run examples/task_contract.json \
   --ledger .dohaa/evidence.sqlite3
 ```
 
+Verify an archived evidence ledger without contacting Hermes:
+
+    hermes-dohaa verify-ledger .dohaa/evidence.sqlite3
+
+The command opens the database in read-only mode, verifies the complete hash
+chain, and returns a machine-readable JSON result. Use `--run-id` to report the
+events associated with one run after the complete chain has passed.
+
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
 ## Deployment and operations
