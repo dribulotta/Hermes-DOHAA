@@ -1,6 +1,11 @@
 import unittest
 
-from hermes_dohaa.assurance.gates import ActionPolicyGate, ClaimEvidenceGate, RequiredEvidenceGate
+from hermes_dohaa.assurance.gates import (
+    ActionPolicyGate,
+    ClaimEvidenceGate,
+    RequiredEvidenceGate,
+    ResultEqualsGate,
+)
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Claim, EvidenceItem, Proposal
 from test_contracts import valid_contract
@@ -32,6 +37,17 @@ class GateTests(unittest.TestCase):
         result = ClaimEvidenceGate().evaluate(self.contract, proposal)
         self.assertFalse(result.passed)
         self.assertIn("missing evidence", result.reason)
+
+    def test_result_gate_requires_exact_value(self):
+        expected = {"marker": "DOHAA_SMOKE_OK", "nonce": "abc"}
+        gate = ResultEqualsGate(expected)
+        self.assertTrue(gate.evaluate(self.contract, Proposal(result=expected)).passed)
+        self.assertFalse(
+            gate.evaluate(
+                self.contract,
+                Proposal(result={"marker": "DOHAA_SMOKE_OK", "nonce": "wrong"}),
+            ).passed
+        )
 
 
 if __name__ == "__main__":

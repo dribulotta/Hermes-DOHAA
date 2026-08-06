@@ -13,6 +13,9 @@ from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Proposal
 
 
+_REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
+
+
 class HermesApiError(RuntimeError):
     pass
 
@@ -25,6 +28,19 @@ class HermesApiRuntime:
     timeout_seconds: float = 300.0
     session_id: str | None = None
     session_key: str | None = None
+    reasoning_effort: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if self.reasoning_effort is not None:
+            if not isinstance(self.reasoning_effort, str):
+                raise ValueError("reasoning_effort must be a string or None")
+            normalized = self.reasoning_effort.strip().lower()
+            if normalized not in _REASONING_EFFORTS:
+                allowed = ", ".join(sorted(_REASONING_EFFORTS))
+                raise ValueError(f"reasoning_effort must be one of: {allowed}")
+            self.reasoning_effort = normalized
 
     def propose(self, contract: TaskContract, feedback: Sequence[str]) -> Proposal:
         body = {
@@ -48,8 +64,15 @@ class HermesApiRuntime:
                 },
             ],
         }
+        if self.reasoning_effort is not None:
+            body["model_options"] = {
+                "reasoning": {
+                    "enabled": self.reasoning_effort != "none",
+                    "effort": self.reasoning_effort,
+                }
+            }
         request = urllib.request.Request(
-            f"{self.base_url.rstrip('/')}/v1/chat/completions",
+            self._chat_completions_url(),
             data=json.dumps(body).encode("utf-8"),
             method="POST",
             headers=self._headers(),
@@ -65,6 +88,13 @@ class HermesApiRuntime:
         except (KeyError, IndexError, TypeError) as exc:
             raise HermesApiError("Hermes API response did not contain choices[0].message.content") from exc
         return parse_proposal_content(content)
+
+    def _chat_completions_url(self) -> str:
+        """Build the endpoint while accepting base URLs with or without /v1."""
+        base_url = self.base_url.rstrip("/")
+        if base_url.endswith("/v1"):
+            return f"{base_url}/chat/completions"
+        return f"{base_url}/v1/chat/completions"
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -105,6 +135,8 @@ _SYSTEM_PROMPT = """You are the cognitive runtime inside a DOHAA-controlled proc
 Return exactly one JSON object and no prose or Markdown. Do not claim that work was
 verified merely because you performed it. Treat every requested action as a proposal;
 the external controller owns authorization and execution.
+Preserve JSON types exactly. In particular, when an expected result is a JSON object,
+return it as an object rather than as a string containing serialized JSON.
 
 Required shape:
 {
