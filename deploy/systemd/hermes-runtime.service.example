@@ -1,0 +1,46 @@
+[Unit]
+Description=Restricted Hermes cognitive runtime for DOHAA
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=hermesrt
+Group=hermesrt
+WorkingDirectory=/home/hermesrt
+
+Environment=HOME=/home/hermesrt
+Environment=LANG=C.UTF-8
+Environment=LC_ALL=C.UTF-8
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=XDG_CACHE_HOME=/home/hermesrt/.hermes/cache
+Environment=PATH=/opt/hermes-runtime/venv/bin:/usr/bin:/bin
+EnvironmentFile=/etc/hermes-runtime/runtime.env
+
+ExecStart=/opt/hermes-runtime/venv/bin/python -m hermes_cli.main gateway run
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/hermesrt/.hermes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

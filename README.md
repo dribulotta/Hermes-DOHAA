@@ -79,6 +79,21 @@ hermes-dohaa run examples/task_contract.json \
 
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
+## Deployment and operations
+
+The repository includes documentation and sanitized reference templates for
+running the cognitive runtime in a separate, restricted trust domain:
+
+- [Isolated deployment guide](docs/deployment.md)
+- [Operations runbook](docs/operations.md)
+- [Governed learning loop](docs/learning-loop.md)
+- [Runtime environment example](deploy/env/runtime.env.example)
+- [Hardened systemd service example](deploy/systemd/hermes-runtime.service.example)
+- [Network-isolation nftables example](deploy/nftables/runtime-isolation.nft.example)
+
+The templates use RFC 5737 documentation addresses and contain no production
+credentials. They must be adapted and independently verified before use.
+
 ## Architectural invariants
 
 1. Model output is a proposal, never proof.

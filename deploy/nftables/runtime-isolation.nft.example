@@ -1,0 +1,86 @@
+# Example only. Adapt interface names, addresses, and firewall integration.
+#
+# Documentation-only example topology:
+#   controller interface/address: veth-controller / 192.0.2.105
+#   runtime interface/address:    veth-runtime    / 192.0.2.106
+#   model server:                 198.51.100.10:1233
+#
+# Check the adapted file with nft --check before applying it.
+
+table bridge hermes_dohaa_runtime {
+    chain input {
+        type filter hook input priority -200; policy accept;
+
+        iifname "veth-runtime" ether type arp accept
+
+        # Runtime traffic to a model server terminating on this host.
+        iifname "veth-runtime" \
+            ip daddr 198.51.100.10 \
+            tcp dport 1233 \
+            accept
+
+        iifname "veth-runtime" counter drop
+    }
+
+    chain forward {
+        type filter hook forward priority -200; policy accept;
+
+        iifname "veth-runtime" ether type arp accept
+        oifname "veth-runtime" ether type arp accept
+
+        # The controller may access only the runtime API.
+        iifname "veth-controller" \
+            oifname "veth-runtime" \
+            ip saddr 192.0.2.105 \
+            ip daddr 192.0.2.106 \
+            tcp dport 8642 \
+            accept
+
+        # The runtime may return established API traffic to the controller.
+        iifname "veth-runtime" \
+            ip saddr 192.0.2.106 \
+            ip daddr 192.0.2.105 \
+            tcp sport 8642 \
+            ct state established,related \
+            accept
+
+        iifname "veth-runtime" counter drop
+        oifname "veth-runtime" counter drop
+    }
+
+    chain output {
+        type filter hook output priority -200; policy accept;
+
+        oifname "veth-runtime" ether type arp accept
+
+        # Responses from a model server terminating on this host.
+        oifname "veth-runtime" \
+            ip saddr 198.51.100.10 \
+            tcp sport 1233 \
+            ct state established,related \
+            accept
+
+        oifname "veth-runtime" counter drop
+    }
+}
+
+# Routed egress may bypass bridge forwarding in some topologies.
+table inet hermes_dohaa_runtime_routed {
+    chain forward {
+        type filter hook forward priority -200; policy accept;
+
+        ip saddr 192.0.2.106 \
+            ip daddr 198.51.100.10 \
+            tcp dport 1233 \
+            accept
+
+        ip daddr 192.0.2.106 \
+            ip saddr 198.51.100.10 \
+            tcp sport 1233 \
+            ct state established,related \
+            accept
+
+        ip saddr 192.0.2.106 counter drop
+        ip daddr 192.0.2.106 counter drop
+    }
+}

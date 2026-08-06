@@ -93,7 +93,7 @@ Hermes-DOHAA is one reference implementation. Other runtimes may implement the s
 | `O` Orchestrator | Initial implementation | Budgets cover attempts; time, cost, and concurrency budgets remain future work |
 | `P` Perception | Represented through contract inputs and runtime evidence | No dedicated acquisition subsystem yet |
 | `F` Filtering | Contract and schema validation | No domain-specific preprocessing pipeline yet |
-| `G` Generation | Hermes HTTP API adapter | Live integration with the target Hermes installation is still pending |
+| `G` Generation | Hermes HTTP API adapter with an isolated live integration path | The validated deployment demonstrates bounded integration, not semantic correctness or complete DOHAA conformance |
 | `V` Validation | Structural evidence and action-policy gates | These gates do not prove the semantic truth of evidence |
 | `M` Memory | Hash-chained SQLite ledger | Not an external transparency log and not yet an agent memory system |
 | `A` Actuators | Not implemented | Deliberately excluded from v0.1 |
