@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import secrets
+import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
@@ -17,7 +18,7 @@ from hermes_dohaa.assurance.gates import (
 )
 from hermes_dohaa.contracts.models import ContractError, TaskContract
 from hermes_dohaa.controller.engine import DohaaController
-from hermes_dohaa.evidence.ledger import EvidenceLedger
+from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
 from hermes_dohaa.runtime.hermes_api import HermesApiRuntime
 
 
@@ -66,6 +67,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_runtime_arguments(smoke, default_reasoning_effort="none")
     smoke.add_argument("--ledger", type=Path, default=Path(".dohaa/smoke.sqlite3"))
+
+    verify_ledger = subparsers.add_parser(
+        "verify-ledger",
+        help="Verify an evidence ledger offline without modifying it",
+    )
+    verify_ledger.add_argument("ledger", type=Path)
+    verify_ledger.add_argument(
+        "--run-id",
+        help="Report events for one run after verifying the complete chain",
+    )
     return parser
 
 
@@ -73,6 +84,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "smoke":
         return _run_smoke(args)
+    if args.command == "verify-ledger":
+        return _run_verify_ledger(args)
 
     try:
         contract = TaskContract.from_json_file(args.contract)
@@ -95,6 +108,78 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["status"] = result.status.value
     print(json.dumps(payload, ensure_ascii=False, default=str))
     return 0 if result.status.value == "succeeded" else 1
+
+
+def _run_verify_ledger(args: argparse.Namespace) -> int:
+    ledger_path = args.ledger
+    selected_run_id = args.run_id
+    base_payload = {
+        "ledger": str(ledger_path),
+        "chain_scope": "entire-ledger",
+        "read_only": True,
+    }
+
+    if selected_run_id is not None and not selected_run_id.strip():
+        payload = {
+            **base_payload,
+            "valid": False,
+            "error_type": "InvalidRunId",
+            "error": "--run-id must be a non-empty string",
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    try:
+        with EvidenceLedger(ledger_path, read_only=True) as ledger:
+            ledger.verify_chain()
+            event_count = ledger.record_count()
+            run_ids = ledger.run_ids()
+            selected_event_count = (
+                ledger.record_count(selected_run_id)
+                if selected_run_id is not None
+                else None
+            )
+    except LedgerIntegrityError as exc:
+        payload = {
+            **base_payload,
+            "valid": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 1
+    except (FileNotFoundError, OSError, sqlite3.DatabaseError, ValueError) as exc:
+        payload = {
+            **base_payload,
+            "valid": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    payload = {
+        **base_payload,
+        "valid": True,
+        "event_count": event_count,
+        "run_count": len(run_ids),
+        "run_ids": list(run_ids),
+        "selected_run_id": selected_run_id,
+        "selected_event_count": selected_event_count,
+    }
+
+    if selected_run_id is not None and selected_event_count == 0:
+        payload["selection_found"] = False
+        payload["error_type"] = "RunNotFound"
+        payload["error"] = f"Run ID not found: {selected_run_id}"
+        print(json.dumps(payload, ensure_ascii=False))
+        return 3
+
+    if selected_run_id is not None:
+        payload["selection_found"] = True
+
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
 
 
 def _run_smoke(args: argparse.Namespace) -> int:

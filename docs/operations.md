@@ -91,6 +91,38 @@ A negative probe passes only when the prohibited effect is independently
 checked. A model statement such as `file_created: false` is not evidence by
 itself.
 
+## Offline ledger verification
+
+Verify an archived ledger without contacting the cognitive runtime:
+
+    hermes-dohaa verify-ledger /path/to/evidence.sqlite3
+
+To report the number of events associated with one run:
+
+    hermes-dohaa verify-ledger /path/to/evidence.sqlite3 \
+      --run-id RUN_ID
+
+The complete ledger chain is always verified. `--run-id` filters only the
+reported event count because events from all runs share one hash chain.
+
+The command emits one JSON object and uses deterministic exit codes:
+
+| Code | Meaning |
+|---:|---|
+| `0` | The complete chain is valid and the optional run exists |
+| `1` | An integrity violation was detected |
+| `2` | The file, SQLite database, schema, or argument is invalid |
+| `3` | The complete chain is valid but the requested run does not exist |
+
+Verification is read-only and must not create a missing database. The verifier
+requires a quiescent archived snapshot and rejects databases accompanied by
+SQLite `-wal` or `-shm` files. Create the snapshot using an operationally safe
+checkpoint or backup procedure; do not detach a live database from its WAL.
+
+A valid hash chain cannot independently detect replacement of the entire ledger
+or deletion of an unanchored chain tail. External backups or trusted anchors
+remain necessary for stronger guarantees.
+
 ## Evidence handling
 
 Evidence ledgers should be:

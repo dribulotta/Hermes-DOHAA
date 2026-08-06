@@ -15,6 +15,10 @@ class LedgerIntegrityError(RuntimeError):
     pass
 
 
+class LedgerReadOnlyError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class LedgerRecord:
     sequence: int
@@ -29,28 +33,64 @@ class LedgerRecord:
 class EvidenceLedger:
     """A small evidence log whose hash chain makes later mutation detectable."""
 
-    def __init__(self, path: str | Path = ":memory:") -> None:
+    def __init__(
+        self,
+        path: str | Path = ":memory:",
+        *,
+        read_only: bool = False,
+    ) -> None:
         self.path = str(path)
-        if self.path != ":memory:":
-            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(self.path)
+        self.read_only = read_only
+
+        if read_only:
+            if self.path == ":memory:":
+                raise ValueError("read-only ledgers require a filesystem path")
+            resolved = Path(self.path).expanduser().resolve()
+            if not resolved.is_file():
+                raise FileNotFoundError(f"Ledger does not exist: {resolved}")
+
+            companions = (
+                Path(f"{resolved}-wal"),
+                Path(f"{resolved}-shm"),
+            )
+            present_companions = [
+                companion.name
+                for companion in companions
+                if companion.exists()
+            ]
+            if present_companions:
+                names = ", ".join(sorted(present_companions))
+                raise ValueError(
+                    "read-only verification requires a quiescent ledger "
+                    f"snapshot without SQLite sidecar files; found: {names}"
+                )
+
+            uri = f"{resolved.as_uri()}?mode=ro&immutable=1"
+            self._connection = sqlite3.connect(uri, uri=True)
+        else:
+            if self.path != ":memory:":
+                Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+            self._connection = sqlite3.connect(self.path)
+
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA foreign_keys = ON")
-        self._connection.execute("PRAGMA journal_mode = WAL")
-        self._connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ledger_events (
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                previous_hash TEXT NOT NULL,
-                event_hash TEXT NOT NULL UNIQUE
+
+        if not read_only:
+            self._connection.execute("PRAGMA journal_mode = WAL")
+            self._connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ledger_events (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    previous_hash TEXT NOT NULL,
+                    event_hash TEXT NOT NULL UNIQUE
+                )
+                """
             )
-            """
-        )
-        self._connection.commit()
+            self._connection.commit()
 
     def close(self) -> None:
         self._connection.close()
@@ -62,6 +102,8 @@ class EvidenceLedger:
         self.close()
 
     def append(self, run_id: str, event_type: str, payload: Any) -> LedgerRecord:
+        if self.read_only:
+            raise LedgerReadOnlyError("Cannot append to a read-only ledger")
         payload_json = _canonical_json(payload)
         created_at = datetime.now(UTC).isoformat()
         row = self._connection.execute(
@@ -106,11 +148,45 @@ class EvidenceLedger:
                 event_hash=row["event_hash"],
             )
 
+    def record_count(self, run_id: str | None = None) -> int:
+        if run_id is None:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS count FROM ledger_events"
+            ).fetchone()
+        else:
+            row = self._connection.execute(
+                "SELECT COUNT(*) AS count FROM ledger_events WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return int(row["count"])
+
+    def run_ids(self) -> tuple[str, ...]:
+        rows = self._connection.execute(
+            "SELECT DISTINCT run_id FROM ledger_events ORDER BY run_id"
+        )
+        return tuple(row["run_id"] for row in rows)
+
     def verify_chain(self) -> bool:
         expected_previous = "0" * 64
-        for row in self._connection.execute("SELECT * FROM ledger_events ORDER BY sequence"):
+        expected_sequence = 1
+        for row in self._connection.execute(
+            "SELECT * FROM ledger_events ORDER BY sequence"
+        ):
+            if row["sequence"] != expected_sequence:
+                raise LedgerIntegrityError(
+                    f"Non-contiguous sequence at {row['sequence']}; "
+                    f"expected {expected_sequence}"
+                )
+            try:
+                json.loads(row["payload_json"])
+            except json.JSONDecodeError as exc:
+                raise LedgerIntegrityError(
+                    f"Invalid payload_json at sequence {row['sequence']}"
+                ) from exc
             if row["previous_hash"] != expected_previous:
-                raise LedgerIntegrityError(f"Broken previous_hash at sequence {row['sequence']}")
+                raise LedgerIntegrityError(
+                    f"Broken previous_hash at sequence {row['sequence']}"
+                )
             expected = _event_hash(
                 row["run_id"],
                 row["event_type"],
@@ -119,8 +195,11 @@ class EvidenceLedger:
                 row["previous_hash"],
             )
             if row["event_hash"] != expected:
-                raise LedgerIntegrityError(f"Invalid event_hash at sequence {row['sequence']}")
+                raise LedgerIntegrityError(
+                    f"Invalid event_hash at sequence {row['sequence']}"
+                )
             expected_previous = row["event_hash"]
+            expected_sequence += 1
         return True
 
 
