@@ -24,6 +24,51 @@ or deployment configuration during this loop.
 Persistent learning would change future behavior across runs. It therefore
 requires a separate lifecycle and stronger authority boundaries.
 
+## Structured repair feedback
+
+A failed deterministic gate produces machine-readable feedback for the next
+bounded proposal attempt. Each feedback item has this shape:
+
+    {
+      "gate": "required_evidence",
+      "code": "evidence.required_missing",
+      "reason": "Required evidence is missing: ['source-1']",
+      "evidence_ids": ["source-1"]
+    }
+
+`code` is the stable value for automation. `reason` is explanatory text for
+operators and models and must not be parsed as a control-plane identifier.
+`evidence_ids` identifies evidence associated with the verdict when available.
+
+Built-in gate failure codes are:
+
+| Code | Meaning |
+|---|---|
+| `result.mismatch` | The proposal result differs from the expected value |
+| `action.forbidden` | The proposal requests an explicitly forbidden action |
+| `action.not_allowlisted` | The proposal requests an undeclared action |
+| `evidence.duplicate_id` | Evidence identifiers are not unique |
+| `evidence.reference_missing` | A claim references unavailable evidence |
+| `evidence.claim_unsupported` | A claim has no evidence reference |
+| `evidence.required_missing` | Contract-required evidence is absent |
+
+The controller records `failure_code` with each gate verdict and sends only
+failed verdicts to the next proposal attempt. The retry event records the same
+structured objects in the evidence ledger.
+
+Terminal controller outcomes also expose a stable `reason_code`:
+
+| Code | Meaning |
+|---|---|
+| `run.succeeded` | All deterministic gates and approval requirements passed |
+| `runtime.failed` | The cognitive runtime failed before producing a proposal |
+| `repair.no_progress` | A previous proposal fingerprint was repeated |
+| `budget.exhausted` | The bounded attempt budget was consumed |
+| `approval.required` | Deterministic gates passed but human approval is pending |
+
+The human-readable terminal `reason` remains descriptive. Automation should
+branch on `reason_code`, never on the wording of `reason`.
+
 ## Candidate lifecycle
 
 A future governed-learning subsystem should implement these states:

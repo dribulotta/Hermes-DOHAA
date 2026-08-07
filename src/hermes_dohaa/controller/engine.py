@@ -10,7 +10,11 @@ from uuid import uuid4
 from hermes_dohaa.assurance.gates import Gate, GateResult
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.evidence.ledger import EvidenceLedger
-from hermes_dohaa.runtime.base import AgentRuntime, Proposal
+from hermes_dohaa.runtime.base import (
+    AgentRuntime,
+    Proposal,
+    VerifierFeedback,
+)
 
 
 class RunStatus(StrEnum):
@@ -23,6 +27,14 @@ class RunStatus(StrEnum):
     FAILED = "failed"
 
 
+class RunReasonCode(StrEnum):
+    SUCCEEDED = "run.succeeded"
+    RUNTIME_FAILED = "runtime.failed"
+    NO_PROGRESS = "repair.no_progress"
+    ATTEMPT_BUDGET_EXHAUSTED = "budget.exhausted"
+    HUMAN_APPROVAL_REQUIRED = "approval.required"
+
+
 @dataclass(frozen=True, slots=True)
 class RunResult:
     run_id: str
@@ -30,6 +42,7 @@ class RunResult:
     attempts: int
     proposal: Proposal | None
     gate_results: tuple[GateResult, ...]
+    reason_code: RunReasonCode
     reason: str
 
 
@@ -49,7 +62,7 @@ class DohaaController:
     def run(self, contract: TaskContract, *, human_approved: bool = False) -> RunResult:
         run_id = str(uuid4())
         self._record(run_id, "run.received", {"contract": contract.to_dict()})
-        feedback: list[str] = []
+        feedback: list[VerifierFeedback] = []
         fingerprints: set[str] = set()
         last_proposal: Proposal | None = None
         last_gate_results: tuple[GateResult, ...] = ()
@@ -70,6 +83,7 @@ class DohaaController:
                     attempt,
                     last_proposal,
                     last_gate_results,
+                    RunReasonCode.RUNTIME_FAILED,
                     "Cognitive runtime failed",
                 )
 
@@ -94,6 +108,7 @@ class DohaaController:
                     attempt,
                     proposal,
                     last_gate_results,
+                    RunReasonCode.NO_PROGRESS,
                     "No progress: the runtime repeated an earlier proposal",
                 )
             fingerprints.add(fingerprint)
@@ -111,6 +126,7 @@ class DohaaController:
                             "passed": result.passed,
                             "reason": result.reason,
                             "evidence_ids": list(result.evidence_ids),
+                            "failure_code": result.failure_code,
                         }
                         for result in last_gate_results
                     ],
@@ -125,6 +141,7 @@ class DohaaController:
                         attempt,
                         proposal,
                         last_gate_results,
+                        RunReasonCode.HUMAN_APPROVAL_REQUIRED,
                         "All gates passed; explicit human approval is still required",
                     )
                 return self._finish(
@@ -133,14 +150,23 @@ class DohaaController:
                     attempt,
                     proposal,
                     last_gate_results,
+                    RunReasonCode.SUCCEEDED,
                     "All deterministic gates passed",
                 )
 
-            feedback = [result.reason for result in last_gate_results if not result.passed]
+            feedback = [
+                result.to_feedback()
+                for result in last_gate_results
+                if not result.passed
+            ]
             self._record(
                 run_id,
                 "state.changed",
-                {"status": RunStatus.RETRYING, "attempt": attempt, "feedback": feedback},
+                {
+                    "status": RunStatus.RETRYING,
+                    "attempt": attempt,
+                    "feedback": [item.to_dict() for item in feedback],
+                },
             )
 
         return self._finish(
@@ -149,6 +175,7 @@ class DohaaController:
             contract.max_attempts,
             last_proposal,
             last_gate_results,
+            RunReasonCode.ATTEMPT_BUDGET_EXHAUSTED,
             "Attempt budget exhausted",
         )
 
@@ -159,14 +186,28 @@ class DohaaController:
         attempts: int,
         proposal: Proposal | None,
         gate_results: tuple[GateResult, ...],
+        reason_code: RunReasonCode,
         reason: str,
     ) -> RunResult:
         self._record(
             run_id,
             "run.finished",
-            {"status": status, "attempts": attempts, "reason": reason},
+            {
+                "status": status,
+                "attempts": attempts,
+                "reason_code": reason_code,
+                "reason": reason,
+            },
         )
-        return RunResult(run_id, status, attempts, proposal, gate_results, reason)
+        return RunResult(
+            run_id,
+            status,
+            attempts,
+            proposal,
+            gate_results,
+            reason_code,
+            reason,
+        )
 
     def _record(self, run_id: str, event_type: str, payload: object) -> None:
         self.ledger.append(run_id, event_type, payload)

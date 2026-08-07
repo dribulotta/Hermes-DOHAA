@@ -3,6 +3,7 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
+from hermes_dohaa.runtime.base import VerifierFeedback
 from hermes_dohaa.runtime.hermes_api import (
     HermesApiError,
     HermesApiRuntime,
@@ -58,7 +59,17 @@ class HermesApiTests(unittest.TestCase):
         )
 
         with patch("urllib.request.urlopen", return_value=response) as urlopen:
-            proposal = runtime.propose(contract, ["result type mismatch"])
+            proposal = runtime.propose(
+                contract,
+                [
+                    VerifierFeedback(
+                        gate="result_equals",
+                        code="result.mismatch",
+                        reason="Proposal result does not equal the expected value",
+                        evidence_ids=("expected-value",),
+                    )
+                ],
+            )
 
         request = urlopen.call_args.args[0]
         body = json.loads(request.data)
@@ -70,7 +81,19 @@ class HermesApiTests(unittest.TestCase):
         )
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 42.0)
         user_payload = json.loads(body["messages"][1]["content"])
-        self.assertEqual(user_payload["verifier_feedback"], ["result type mismatch"])
+        self.assertEqual(
+            user_payload["verifier_feedback"],
+            [
+                {
+                    "gate": "result_equals",
+                    "code": "result.mismatch",
+                    "reason": (
+                        "Proposal result does not equal the expected value"
+                    ),
+                    "evidence_ids": ["expected-value"],
+                }
+            ],
+        )
 
     def test_runtime_rejects_invalid_reasoning_effort(self):
         with self.assertRaises(ValueError):
