@@ -21,6 +21,7 @@ from hermes_dohaa.runtime.base import (
     Proposal,
     VerifierFeedback,
 )
+from hermes_dohaa.runtime.hermes_api import HermesApiError
 
 
 class RunStatus(StrEnum):
@@ -175,6 +176,8 @@ class RunResult:
     gate_results: tuple[GateResult, ...]
     reason_code: RunReasonCode
     reason: str
+    runtime_error_code: str | None = None
+    runtime_error_details: dict[str, Any] | None = None
 
 
 class DohaaController:
@@ -203,10 +206,27 @@ class DohaaController:
             try:
                 proposal = self.runtime.propose(contract, feedback)
             except Exception as exc:  # Runtime errors are evidence, never controller crashes.
+                runtime_error_code = (
+                    exc.code if isinstance(exc, HermesApiError) else None
+                )
+                runtime_error_details = (
+                    exc.to_dict()["details"]
+                    if isinstance(exc, HermesApiError)
+                    else {}
+                )
+                safe_error = (
+                    exc.message if isinstance(exc, HermesApiError) else str(exc)
+                )
                 self._record(
                     run_id,
                     "runtime.failed",
-                    {"attempt": attempt, "error_type": type(exc).__name__, "error": str(exc)},
+                    {
+                        "attempt": attempt,
+                        "error_type": type(exc).__name__,
+                        "error": safe_error,
+                        "runtime_error_code": runtime_error_code,
+                        "runtime_error_details": runtime_error_details,
+                    },
                 )
                 return self._finish(
                     run_id,
@@ -216,6 +236,8 @@ class DohaaController:
                     last_gate_results,
                     RunReasonCode.RUNTIME_FAILED,
                     "Cognitive runtime failed",
+                    runtime_error_code=runtime_error_code,
+                    runtime_error_details=runtime_error_details,
                 )
 
             last_proposal = proposal
@@ -486,6 +508,9 @@ class DohaaController:
         gate_results: tuple[GateResult, ...],
         reason_code: RunReasonCode,
         reason: str,
+        *,
+        runtime_error_code: str | None = None,
+        runtime_error_details: dict[str, Any] | None = None,
     ) -> RunResult:
         self._record(
             run_id,
@@ -495,6 +520,8 @@ class DohaaController:
                 "attempts": attempts,
                 "reason_code": reason_code,
                 "reason": reason,
+                "runtime_error_code": runtime_error_code,
+                "runtime_error_details": runtime_error_details or {},
             },
         )
         return RunResult(
@@ -505,6 +532,12 @@ class DohaaController:
             gate_results,
             reason_code,
             reason,
+            runtime_error_code,
+            (
+                runtime_error_details.copy()
+                if runtime_error_details is not None
+                else None
+            ),
         )
 
     def _record(self, run_id: str, event_type: str, payload: object) -> None:

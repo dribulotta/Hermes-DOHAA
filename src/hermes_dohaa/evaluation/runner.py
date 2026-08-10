@@ -31,6 +31,7 @@ from hermes_dohaa.evaluation.models import EvaluationCase, EvaluationSuite
 from hermes_dohaa.evaluation.statistics import analyze_unique_cases
 from hermes_dohaa.evidence.ledger import EvidenceLedger
 from hermes_dohaa.runtime.base import AgentRuntime, Proposal, VerifierFeedback
+from hermes_dohaa.runtime.hermes_api import HermesApiError
 from hermes_dohaa.assurance.result_spec import json_equal, json_type
 
 
@@ -306,6 +307,8 @@ def _run_dohaa(
             runtime,
             error_type=str(failure_payload.get("error_type", "RuntimeError")),
             error=str(failure_payload.get("error", result.reason)),
+            error_code=failure_payload.get("runtime_error_code"),
+            error_details=failure_payload.get("runtime_error_details", {}),
         )
         outcome["controller"] = {
             "run_id": result.run_id,
@@ -376,7 +379,13 @@ def _runtime_failure(
         condition,
         runtime,
         error_type=type(error).__name__,
-        error=str(error),
+        error=error.message if isinstance(error, HermesApiError) else str(error),
+        error_code=error.code if isinstance(error, HermesApiError) else None,
+        error_details=(
+            error.to_dict()["details"]
+            if isinstance(error, HermesApiError)
+            else {}
+        ),
     )
 
 
@@ -387,6 +396,8 @@ def _runtime_failure_details(
     *,
     error_type: str,
     error: str,
+    error_code: Any = None,
+    error_details: Any = None,
 ) -> dict[str, Any]:
     proposals = runtime.proposals if runtime is not None else ()
     first = proposals[0] if proposals else None
@@ -411,7 +422,11 @@ def _runtime_failure_details(
         "regressed": False,
         "repair_transition": "runtime_failed",
         "error_type": error_type,
+        "error_code": error_code if isinstance(error_code, str) else None,
         "error": error,
+        "error_details": (
+            _json_clone(error_details) if isinstance(error_details, dict) else {}
+        ),
     }
 
 
@@ -529,7 +544,33 @@ def _summarize(case_results: list[dict[str, Any]]) -> dict[str, Any]:
                 else None
             ),
         }
+    failures = [
+        (case, condition, case["conditions"][condition.value])
+        for case in case_results
+        for condition in EvaluationCondition
+        if case["conditions"][condition.value]["status"] == "runtime_failed"
+    ]
+    summary["runtime_failure_counts"] = {
+        "by_code": _sorted_counts(
+            item.get("error_code") or "unclassified" for _, _, item in failures
+        ),
+        "by_condition": _sorted_counts(
+            condition.value for _, condition, _ in failures
+        ),
+        "by_domain": _sorted_counts(case["domain"] for case, _, _ in failures),
+        "by_condition_and_code": _sorted_counts(
+            f"{condition.value}/{item.get('error_code') or 'unclassified'}"
+            for _, condition, item in failures
+        ),
+    }
     return summary
+
+
+def _sorted_counts(values: Any) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _paired_comparison(

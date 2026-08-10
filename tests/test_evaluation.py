@@ -21,6 +21,7 @@ from hermes_dohaa.evaluation import (
     write_suite_commitment,
 )
 from hermes_dohaa.runtime.base import Proposal
+from hermes_dohaa.runtime.hermes_api import HermesApiError
 
 
 def suite_dict():
@@ -513,6 +514,43 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(
             dohaa["controller"]["reason_code"],
             "runtime.failed",
+        )
+        self.assertEqual(
+            result["summary"]["runtime_failure_counts"]["by_condition"],
+            {"direct": 2, "dohaa": 2, "self_reflection": 2},
+        )
+        self.assertEqual(
+            result["summary"]["runtime_failure_counts"]["by_domain"],
+            {"evidence_synthesis": 3, "general_reasoning": 3},
+        )
+
+    def test_structured_runtime_diagnostics_reach_outcomes_without_raw_content(self):
+        secret = "prompt expected_result Authorization raw-response"
+
+        class StructuredFailure:
+            def propose(self, contract, feedback):
+                del contract, feedback
+                raise HermesApiError(
+                    "proposal.content_non_json",
+                    "Hermes returned non-JSON proposal content",
+                    {"byte_length": len(secret), "sha256": "a" * 64},
+                )
+
+        def factory(contract, session_id, sampling_seed):
+            del contract, session_id, sampling_seed
+            return StructuredFailure()
+
+        result = run_comparative_evaluation(
+            EvaluationSuite.from_dict(suite_dict()), factory, seed=3
+        )
+        serialized = json.dumps(result)
+        self.assertNotIn(secret, serialized)
+        outcome = result["cases"][0]["conditions"]["direct"]
+        self.assertEqual(outcome["error_code"], "proposal.content_non_json")
+        self.assertEqual(outcome["error_details"]["byte_length"], len(secret))
+        self.assertEqual(
+            result["summary"]["runtime_failure_counts"]["by_code"],
+            {"proposal.content_non_json": 6},
         )
 
     def test_result_writer_is_private_and_does_not_overwrite(self):
