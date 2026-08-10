@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -17,7 +19,25 @@ _REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhi
 
 
 class HermesApiError(RuntimeError):
-    pass
+    """A fail-closed adapter failure with safe, stable diagnostics."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.details = _json_clone(details or {})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "details": _json_clone(self.details),
+        }
 
 
 @dataclass(slots=True)
@@ -124,17 +144,62 @@ class HermesApiRuntime:
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                payload = json.load(response)
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise HermesApiError(f"Hermes API request failed: {exc}") from exc
+                response_bytes = response.read()
+                content_type = _content_type(getattr(response, "headers", None))
+                status = getattr(response, "status", None)
+        except urllib.error.HTTPError as exc:
+            raise HermesApiError(
+                "response.http_error",
+                "Hermes returned an unsuccessful HTTP response",
+                _response_details(
+                    stage="http",
+                    status=exc.code,
+                    content_type=_content_type(exc.headers),
+                ),
+            ) from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise HermesApiError(
+                "response.timeout", "Hermes API request timed out", {"stage": "request"}
+            ) from exc
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+                raise HermesApiError(
+                    "response.timeout",
+                    "Hermes API request timed out",
+                    {"stage": "request"},
+                ) from exc
+            raise HermesApiError(
+                "response.connection_failed",
+                "Hermes API connection failed",
+                {"stage": "request"},
+            ) from exc
+
+        response_details = _response_details(
+            stage="response",
+            status=status,
+            content_type=content_type,
+            content=response_bytes,
+        )
+        try:
+            payload = json.loads(response_bytes)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HermesApiError(
+                "response.json_invalid",
+                "Hermes returned a non-JSON HTTP response",
+                response_details,
+            ) from exc
 
         usage = payload.get("usage") if isinstance(payload, dict) else None
-        self.usage_records.append(dict(usage) if isinstance(usage, dict) else {})
+        self.usage_records.append(_safe_usage(usage))
 
         try:
             content = payload["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise HermesApiError("Hermes API response did not contain choices[0].message.content") from exc
+            raise HermesApiError(
+                "response.shape_invalid",
+                "Hermes API response did not contain choices[0].message.content",
+                response_details,
+            ) from exc
         return parse_proposal_content(content)
 
     def _chat_completions_url(self) -> str:
@@ -158,7 +223,12 @@ class HermesApiRuntime:
 
 def parse_proposal_content(content: Any) -> Proposal:
     if not isinstance(content, str):
-        raise HermesApiError("Hermes proposal content must be a string")
+        raise HermesApiError(
+            "response.shape_invalid",
+            "Hermes proposal content must be a string",
+            {"stage": "proposal_content", "classification": "unknown"},
+        )
+    details = _content_details(content)
     stripped = content.strip()
     if stripped.startswith("```"):
         lines = stripped.splitlines()
@@ -170,13 +240,97 @@ def parse_proposal_content(content: Any) -> Proposal:
     try:
         raw = json.loads(stripped)
     except json.JSONDecodeError as exc:
-        raise HermesApiError("Hermes returned non-JSON proposal content") from exc
+        raise HermesApiError(
+            "proposal.content_non_json",
+            "Hermes returned non-JSON proposal content",
+            details,
+        ) from exc
     if not isinstance(raw, dict):
-        raise HermesApiError("Hermes proposal root must be an object")
+        raise HermesApiError(
+            "proposal.schema_invalid", "Hermes proposal root must be an object", details
+        )
     try:
         return Proposal.from_dict(raw)
     except (TypeError, ValueError) as exc:
-        raise HermesApiError(f"Hermes proposal schema is invalid: {exc}") from exc
+        raise HermesApiError(
+            "proposal.schema_invalid", "Hermes proposal schema is invalid", details
+        ) from exc
+
+
+def _content_type(headers: Any) -> str | None:
+    value = headers.get("Content-Type") if headers is not None else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.split(";", 1)[0].strip().lower()
+
+
+def _response_details(
+    *,
+    stage: str,
+    status: Any = None,
+    content_type: str | None = None,
+    content: bytes | None = None,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {"stage": stage}
+    if isinstance(status, int):
+        details["http_status"] = status
+    if content_type is not None:
+        details["content_type"] = content_type
+    if content is not None:
+        details.update(
+            {
+                "byte_length": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "classification": _classify_text(
+                    content.decode("utf-8", errors="replace")
+                ),
+                "has_markdown_fence": b"```" in content,
+            }
+        )
+    return details
+
+
+def _content_details(content: str) -> dict[str, Any]:
+    encoded = content.encode("utf-8")
+    return {
+        "stage": "proposal_content",
+        "character_length": len(content),
+        "byte_length": len(encoded),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "classification": _classify_text(content),
+        "has_markdown_fence": "```" in content,
+    }
+
+
+def _classify_text(content: str) -> str:
+    stripped = content.strip()
+    if not stripped:
+        return "empty"
+    if stripped.startswith("```"):
+        return "fenced_json"
+    try:
+        json.loads(stripped)
+    except json.JSONDecodeError:
+        return "text"
+    return "json"
+
+
+def _json_clone(value: Any) -> Any:
+    return json.loads(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    )
+
+
+def _safe_usage(value: Any) -> dict[str, int | float]:
+    if not isinstance(value, dict):
+        return {}
+    allowed = ("prompt_tokens", "completion_tokens", "total_tokens")
+    return {
+        key: item
+        for key in allowed
+        if isinstance((item := value.get(key)), (int, float))
+        and not isinstance(item, bool)
+    }
 
 
 _SYSTEM_PROMPT = """You are the cognitive runtime inside a DOHAA-controlled process.

@@ -207,3 +207,25 @@ no multiple-comparison correction is applied.
 Running a previously protected holdout with changed evaluator code is a
 development/regression test, not a new independent confirmation. A new
 confirmation requires a newly protected, independently frozen suite.
+
+## Safe runtime failure diagnostics
+
+Runtime failures remain failed outcomes and stay in every denominator. Outcomes
+carry additive `error_type`, `error_code`, `error`, and `error_details` fields;
+the summary reports deterministic counts by stable code, condition, domain, and
+condition/code. Stable adapter codes are `response.timeout`,
+`response.connection_failed`, `response.http_error`, `response.json_invalid`,
+`response.shape_invalid`, `proposal.content_non_json`, and
+`proposal.schema_invalid`. Automation must use these codes rather than messages.
+
+Diagnostics may contain only safe metadata such as response length, SHA-256,
+normalized media type, HTTP status, processing stage, and broad content class.
+Raw responses, fragments, prompts, contracts, visible inputs, oracles,
+credentials, sensitive headers, and sensitive URLs are never retained. Hashes
+are calculated over received bytes without recording those bytes.
+
+Parsing remains strict and fail-closed: pure JSON and the already-supported
+whole fenced JSON form are accepted, while prose containing JSON is rejected.
+There are no silent retries, repairs, or heuristic extraction. Any future
+format retry must have an explicit budget, be recorded, and be applied equally
+to every compared condition.

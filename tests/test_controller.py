@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -21,6 +22,7 @@ from hermes_dohaa.controller.engine import (
 from hermes_dohaa.controller.identity import capture_control_plane_identity
 from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
 from hermes_dohaa.runtime.base import Claim, EvidenceItem, Proposal
+from hermes_dohaa.runtime.hermes_api import HermesApiError
 from test_contracts import valid_contract
 
 
@@ -132,6 +134,33 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(
             finished[0].payload["reason_code"],
             RunReasonCode.RUNTIME_FAILED.value,
+        )
+
+    def test_structured_runtime_failure_is_safe_in_ledger_and_terminal_event(self):
+        secret = "Authorization: Bearer private-value"
+
+        class FailingRuntime:
+            def propose(self, contract, feedback):
+                del contract, feedback
+                raise HermesApiError(
+                    "proposal.content_non_json",
+                    "Hermes returned non-JSON proposal content",
+                    {"stage": "proposal_content", "byte_length": len(secret)},
+                )
+
+        with EvidenceLedger() as ledger:
+            result = DohaaController(FailingRuntime(), self.gates, ledger).run(
+                TaskContract.from_dict(valid_contract())
+            )
+            payloads = [record.payload for record in ledger.records(result.run_id)]
+
+        serialized = json.dumps(payloads)
+        self.assertNotIn(secret, serialized)
+        self.assertEqual(result.reason_code, RunReasonCode.RUNTIME_FAILED)
+        self.assertEqual(result.runtime_error_code, "proposal.content_non_json")
+        self.assertTrue(all("contract" not in payload for payload in payloads[-2:]))
+        self.assertEqual(
+            payloads[-1]["runtime_error_details"]["byte_length"], len(secret)
         )
 
     def test_attempt_budget_has_stable_reason_code(self):
