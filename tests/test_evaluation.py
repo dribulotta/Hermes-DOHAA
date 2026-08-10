@@ -13,8 +13,12 @@ from hermes_dohaa.evaluation import (
     EvaluationCondition,
     EvaluationSuite,
     EvaluationSuiteError,
+    SuiteCommitment,
+    SuiteCommitmentError,
+    exact_two_sided_sign_test_p,
     run_comparative_evaluation,
     write_evaluation_result,
+    write_suite_commitment,
 )
 from hermes_dohaa.runtime.base import Proposal
 
@@ -63,6 +67,58 @@ def suite_dict():
         "description": "Two-domain comparative evaluation fixture.",
         "cases": cases,
     }
+
+
+def protected_suite_dict():
+    raw = {
+        "schema_version": "1.0",
+        "suite_id": "private-protected-pilot",
+        "description": "Unpublished protected pilot fixture.",
+        "cases": [],
+    }
+    domains = (
+        "evidence_synthesis",
+        "temporal_reasoning",
+        "structured_extraction",
+    )
+    for index in range(30):
+        domain = domains[index % len(domains)]
+        answer = f"protected-answer-{index}"
+        raw["cases"].append(
+            {
+                "case_id": f"protected-case-{index:02d}",
+                "domain": domain,
+                "contract": {
+                    "schema_version": "1.0",
+                    "contract_id": f"protected-contract-{index:02d}",
+                    "objective": "Return the answer supported by the supplied facts.",
+                    "inputs": {
+                        "facts": {"answer": answer},
+                        "result_spec": {
+                            "required_keys": ["answer"],
+                            "additional_keys": False,
+                            "types": {"answer": "string"},
+                            "enums": {},
+                        },
+                    },
+                    "constraints": ["Do not request actions."],
+                    "acceptance_criteria": [
+                        {
+                            "criterion_id": "exact-answer",
+                            "description": "Return the supported answer.",
+                            "required_evidence": [],
+                        }
+                    ],
+                    "allowed_actions": [],
+                    "forbidden_actions": ["shell.execute"],
+                    "risk_level": "low",
+                    "max_attempts": 2,
+                    "requires_human_approval": False,
+                },
+                "expected_result": {"answer": answer},
+            }
+        )
+    return raw
 
 
 class AdaptiveRuntime:
@@ -369,6 +425,78 @@ class EvaluationTests(unittest.TestCase):
                 repetitions=0,
             )
 
+    def test_statistics_treat_unique_cases_as_independent_units(self):
+        suite = EvaluationSuite.from_dict(suite_dict())
+
+        result = run_comparative_evaluation(
+            suite,
+            ScriptedFactory(),
+            repetitions=3,
+        )
+
+        analysis = result["statistical_analysis"]
+        self.assertEqual(analysis["unit_of_analysis"], "unique_case")
+        self.assertEqual(analysis["unique_cases"], 2)
+        comparison = analysis["paired_sign_tests"]["dohaa_vs_direct"]
+        self.assertEqual(comparison["wins"], 2)
+        self.assertEqual(comparison["losses"], 0)
+        self.assertEqual(comparison["ties"], 0)
+        self.assertEqual(comparison["discordant_cases"], 2)
+        self.assertEqual(comparison["exact_two_sided_sign_test_p"], 0.5)
+        self.assertEqual(
+            analysis["condition_statistics"]["dohaa"]["strict_passes"],
+            2,
+        )
+        self.assertEqual(exact_two_sided_sign_test_p(5, 0), 0.0625)
+        self.assertIsNone(exact_two_sided_sign_test_p(0, 0))
+
+    def test_protected_suite_commitment_detects_mutation(self):
+        suite = EvaluationSuite.from_dict(protected_suite_dict())
+        commitment = SuiteCommitment.create(
+            suite,
+            protocol_commit="a" * 40,
+        )
+
+        commitment.verify(suite)
+        restored = SuiteCommitment.from_dict(commitment.to_dict())
+        self.assertEqual(restored.sha256(), commitment.sha256())
+        self.assertEqual(restored.case_count, 30)
+        self.assertEqual(
+            dict(restored.domain_counts),
+            {
+                "evidence_synthesis": 10,
+                "structured_extraction": 10,
+                "temporal_reasoning": 10,
+            },
+        )
+
+        changed = protected_suite_dict()
+        changed["cases"][0]["expected_result"] = {"answer": "changed"}
+        with self.assertRaisesRegex(SuiteCommitmentError, "suite_sha256"):
+            commitment.verify(EvaluationSuite.from_dict(changed))
+
+        with self.assertRaisesRegex(SuiteCommitmentError, "between 30 and 50"):
+            SuiteCommitment.create(
+                EvaluationSuite.from_dict(suite_dict()),
+                protocol_commit="a" * 40,
+            )
+
+    def test_suite_commitment_writer_is_private_and_non_overwriting(self):
+        suite = EvaluationSuite.from_dict(protected_suite_dict())
+        commitment = SuiteCommitment.create(
+            suite,
+            protocol_commit="b" * 40,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "suite.commitment.json"
+            write_suite_commitment(path, commitment)
+            before = path.read_bytes()
+
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            with self.assertRaises(FileExistsError):
+                write_suite_commitment(path, commitment)
+            self.assertEqual(path.read_bytes(), before)
+
     def test_runtime_failures_are_retained_for_every_condition(self):
         suite = EvaluationSuite.from_dict(suite_dict())
 
@@ -456,6 +584,67 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(payload["runtime_policy"]["sampling_seed"], 19)
         self.assertEqual(persisted["evaluation_id"], payload["evaluation_id"])
         self.assertEqual(persisted["summary"]["direct"]["final_passes"], 4)
+
+    def test_cli_freezes_a_protected_suite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            suite_path = root / "protected.json"
+            manifest_path = root / "protected.commitment.json"
+            result_path = root / "protected-result.json"
+            suite_path.write_text(
+                json.dumps(protected_suite_dict()),
+                encoding="utf-8",
+            )
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(
+                    [
+                        "freeze-suite",
+                        str(suite_path),
+                        "--output",
+                        str(manifest_path),
+                        "--protocol-commit",
+                        "c" * 40,
+                    ]
+                )
+
+            payload = json.loads(output.getvalue())
+            persisted = SuiteCommitment.from_json_file(manifest_path)
+
+            evaluation_output = io.StringIO()
+            with patch(
+                "hermes_dohaa.runtime.hermes_api.HermesApiRuntime.propose",
+                autospec=True,
+                side_effect=answer_from_contract,
+            ), redirect_stdout(evaluation_output):
+                evaluation_exit_code = main(
+                    [
+                        "evaluate",
+                        str(suite_path),
+                        "--suite-commitment",
+                        str(manifest_path),
+                        "--output",
+                        str(result_path),
+                    ]
+                )
+            evaluation_payload = json.loads(evaluation_output.getvalue())
+            evaluation_result = json.loads(
+                result_path.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "frozen")
+        self.assertEqual(payload["commitment_sha256"], persisted.sha256())
+        self.assertEqual(payload["commitment"]["case_count"], 30)
+        self.assertEqual(evaluation_exit_code, 0)
+        self.assertEqual(
+            evaluation_payload["suite_commitment_sha256"],
+            persisted.sha256(),
+        )
+        self.assertEqual(
+            evaluation_result["suite_commitment"]["commitment_id"],
+            persisted.commitment_id,
+        )
 
 
 if __name__ == "__main__":
