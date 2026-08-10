@@ -156,7 +156,7 @@ def _validate(value: Any, node: ResultNode, path: str, out: list[dict[str, Any]]
             count += 1
         for key in sorted(set(value) & set(props)):
             count += _validate(value[key], props[key], path + "/" + _escape(key), out)
-    elif node.type == "array":
+    elif node.type == "array" and node.items is not None:
         for index, item in enumerate(value):
             count += _validate(item, node.items, path + f"/{index}", out)
     return count
