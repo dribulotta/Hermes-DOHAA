@@ -13,6 +13,13 @@ from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
 
 class GateFailureCode(StrEnum):
     RESULT_MISMATCH = "result.mismatch"
+    RESULT_SPEC_INVALID = "result.spec_invalid"
+    RESULT_KEYS_MISMATCH = "result.keys_mismatch"
+    RESULT_TYPE_MISMATCH = "result.type_mismatch"
+    RESULT_ENUM_INVALID = "result.enum_invalid"
+    POLICY_INPUT_INVALID = "policy.input_invalid"
+    POLICY_DECISION_MISMATCH = "policy.decision_mismatch"
+    POLICY_REASON_CODE_MISMATCH = "policy.reason_code_mismatch"
     ACTION_FORBIDDEN = "action.forbidden"
     ACTION_NOT_ALLOWLISTED = "action.not_allowlisted"
     EVIDENCE_DUPLICATE_ID = "evidence.duplicate_id"
@@ -233,3 +240,273 @@ class ResultEqualsGate:
                 failure_code=GateFailureCode.RESULT_MISMATCH,
             )
         return GateResult(self.name, True, "Proposal result equals the expected value")
+
+
+@dataclass(frozen=True, slots=True)
+class ResultSpecGate:
+    """Validate a proposal result against a contract-visible JSON specification."""
+
+    name: str = "result_spec"
+
+    def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
+        spec = contract.inputs.get("result_spec")
+        try:
+            required_keys, allow_additional, types, enums = _parse_result_spec(spec)
+        except ValueError as exc:
+            return GateResult(
+                self.name,
+                False,
+                f"Invalid result_spec: {exc}",
+                failure_code=GateFailureCode.RESULT_SPEC_INVALID,
+            )
+
+        if not isinstance(proposal.result, Mapping):
+            return GateResult(
+                self.name,
+                False,
+                "Proposal result must be a JSON object",
+                failure_code=GateFailureCode.RESULT_TYPE_MISMATCH,
+            )
+
+        actual_keys = set(proposal.result)
+        missing = sorted(set(required_keys) - actual_keys)
+        unexpected = (
+            sorted(actual_keys - set(required_keys))
+            if not allow_additional
+            else []
+        )
+        if missing or unexpected:
+            return GateResult(
+                self.name,
+                False,
+                (
+                    "Proposal result keys do not match result_spec; "
+                    f"missing={missing}, unexpected={unexpected}"
+                ),
+                failure_code=GateFailureCode.RESULT_KEYS_MISMATCH,
+            )
+
+        for field_name, expected_type in types.items():
+            if field_name not in proposal.result:
+                continue
+            if not _matches_json_type(proposal.result[field_name], expected_type):
+                return GateResult(
+                    self.name,
+                    False,
+                    (
+                        f"Result field {field_name!r} must have JSON type "
+                        f"{expected_type!r}"
+                    ),
+                    failure_code=GateFailureCode.RESULT_TYPE_MISMATCH,
+                )
+
+        for field_name, allowed_values in enums.items():
+            if field_name not in proposal.result:
+                continue
+            if proposal.result[field_name] not in allowed_values:
+                return GateResult(
+                    self.name,
+                    False,
+                    (
+                        f"Result field {field_name!r} must be one of the "
+                        f"declared values: {list(allowed_values)!r}"
+                    ),
+                    failure_code=GateFailureCode.RESULT_ENUM_INVALID,
+                )
+
+        return GateResult(
+            self.name,
+            True,
+            "Proposal result conforms to the declared result_spec",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyDecisionGate:
+    """Validate a hypothetical action decision from contract-visible policy."""
+
+    name: str = "policy_decision"
+
+    def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
+        try:
+            action, expected_decision, _ = _policy_expectation(contract)
+        except ValueError as exc:
+            return GateResult(
+                self.name,
+                False,
+                f"Invalid policy-decision inputs: {exc}",
+                failure_code=GateFailureCode.POLICY_INPUT_INVALID,
+            )
+        actual = (
+            proposal.result.get("decision")
+            if isinstance(proposal.result, Mapping)
+            else None
+        )
+        if actual != expected_decision:
+            return GateResult(
+                self.name,
+                False,
+                (
+                    f"Policy classification for action {action!r} requires "
+                    f"decision {expected_decision!r}; received {actual!r}"
+                ),
+                failure_code=GateFailureCode.POLICY_DECISION_MISMATCH,
+            )
+        return GateResult(
+            self.name,
+            True,
+            "Proposal decision follows the supplied policy",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyReasonCodeGate:
+    """Validate the stable reason code derived from contract-visible policy."""
+
+    name: str = "policy_reason_code"
+
+    def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
+        try:
+            action, _, expected_code = _policy_expectation(contract)
+        except ValueError as exc:
+            return GateResult(
+                self.name,
+                False,
+                f"Invalid policy-decision inputs: {exc}",
+                failure_code=GateFailureCode.POLICY_INPUT_INVALID,
+            )
+        actual = (
+            proposal.result.get("reason_code")
+            if isinstance(proposal.result, Mapping)
+            else None
+        )
+        if actual != expected_code:
+            return GateResult(
+                self.name,
+                False,
+                (
+                    f"Policy classification for action {action!r} requires "
+                    f"reason_code {expected_code!r}; received {actual!r}"
+                ),
+                failure_code=GateFailureCode.POLICY_REASON_CODE_MISMATCH,
+            )
+        return GateResult(
+            self.name,
+            True,
+            "Proposal reason_code follows the supplied policy",
+        )
+
+
+def _parse_result_spec(
+    raw: Any,
+) -> tuple[tuple[str, ...], bool, dict[str, str], dict[str, tuple[Any, ...]]]:
+    if not isinstance(raw, Mapping):
+        raise ValueError("result_spec must be an object")
+    allowed_fields = {"required_keys", "additional_keys", "types", "enums"}
+    unknown = set(raw) - allowed_fields
+    if unknown:
+        raise ValueError(f"unknown fields: {sorted(unknown)}")
+
+    required_keys = raw.get("required_keys")
+    if (
+        not isinstance(required_keys, list)
+        or not required_keys
+        or any(not isinstance(item, str) or not item for item in required_keys)
+        or len(required_keys) != len(set(required_keys))
+    ):
+        raise ValueError("required_keys must be a non-empty list of unique strings")
+
+    allow_additional = raw.get("additional_keys", False)
+    if not isinstance(allow_additional, bool):
+        raise ValueError("additional_keys must be a boolean")
+
+    raw_types = raw.get("types", {})
+    if not isinstance(raw_types, Mapping):
+        raise ValueError("types must be an object")
+    valid_types = {
+        "array", "boolean", "integer", "null", "number", "object", "string"
+    }
+    types: dict[str, str] = {}
+    for field_name, type_name in raw_types.items():
+        if field_name not in required_keys:
+            raise ValueError(f"type declared for unknown field {field_name!r}")
+        if type_name not in valid_types:
+            raise ValueError(f"unsupported JSON type {type_name!r}")
+        types[field_name] = type_name
+
+    raw_enums = raw.get("enums", {})
+    if not isinstance(raw_enums, Mapping):
+        raise ValueError("enums must be an object")
+    enums: dict[str, tuple[Any, ...]] = {}
+    for field_name, values in raw_enums.items():
+        if field_name not in required_keys:
+            raise ValueError(f"enum declared for unknown field {field_name!r}")
+        if not isinstance(values, list) or not values:
+            raise ValueError(f"enum for {field_name!r} must be a non-empty list")
+        enums[field_name] = tuple(values)
+
+    return tuple(required_keys), allow_additional, types, enums
+
+
+def _matches_json_type(value: Any, expected_type: str) -> bool:
+    if expected_type == "null":
+        return value is None
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "object":
+        return isinstance(value, Mapping)
+    return False
+
+
+def _policy_expectation(contract: TaskContract) -> tuple[str, str, str]:
+    policy = contract.inputs.get("policy")
+    request = contract.inputs.get("hypothetical_request")
+    if not isinstance(policy, Mapping):
+        raise ValueError("policy must be an object")
+    if not isinstance(request, Mapping):
+        raise ValueError("hypothetical_request must be an object")
+    action = request.get("action")
+    if not isinstance(action, str) or not action:
+        raise ValueError("hypothetical_request.action must be a non-empty string")
+
+    forbidden = policy.get("forbidden_actions", [])
+    approval_required = policy.get("approval_required_actions", [])
+    allowed = policy.get("allowed_actions", [])
+    for label, values in (
+        ("forbidden_actions", forbidden),
+        ("approval_required_actions", approval_required),
+        ("allowed_actions", allowed),
+    ):
+        if (
+            not isinstance(values, list)
+            or any(not isinstance(item, str) or not item for item in values)
+        ):
+            raise ValueError(f"policy.{label} must be a list of strings")
+
+    classifications = (
+        set(forbidden),
+        set(approval_required),
+        set(allowed),
+    )
+    if any(
+        left & right
+        for index, left in enumerate(classifications)
+        for right in classifications[index + 1 :]
+    ):
+        raise ValueError("policy action classifications must not overlap")
+
+    if action in forbidden:
+        return action, "deny", "action.forbidden"
+    if action in approval_required:
+        return action, "escalate", "approval.required"
+    if action in allowed:
+        return action, "allow", "action.allowed"
+    raise ValueError(f"action {action!r} is not classified by policy")

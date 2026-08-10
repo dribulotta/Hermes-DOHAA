@@ -19,8 +19,11 @@ from hermes_dohaa.assurance.gates import (
     ActionPolicyGate,
     ClaimEvidenceGate,
     Gate,
+    PolicyDecisionGate,
+    PolicyReasonCodeGate,
     RequiredEvidenceGate,
     ResultEqualsGate,
+    ResultSpecGate,
 )
 from hermes_dohaa.controller.engine import DohaaController, RunReasonCode
 from hermes_dohaa.contracts.models import TaskContract
@@ -40,6 +43,7 @@ class RuntimeFactory(Protocol):
         self,
         contract: TaskContract,
         session_id: str,
+        sampling_seed: int,
     ) -> AgentRuntime:
         """Return a fresh runtime isolated to one case and condition."""
 
@@ -67,10 +71,20 @@ def run_comparative_evaluation(
     runtime_factory: RuntimeFactory,
     *,
     seed: int = 0,
+    repetitions: int = 1,
+    sampling_seed: int = 0,
     runtime_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("evaluation seed must be an integer")
+    if (
+        isinstance(repetitions, bool)
+        or not isinstance(repetitions, int)
+        or not 1 <= repetitions <= 100
+    ):
+        raise ValueError("evaluation repetitions must be between 1 and 100")
+    if isinstance(sampling_seed, bool) or not isinstance(sampling_seed, int):
+        raise ValueError("evaluation sampling_seed must be an integer")
     policy = _json_clone(dict(runtime_policy or {}))
 
     evaluation_id = str(uuid4())
@@ -79,25 +93,39 @@ def run_comparative_evaluation(
     case_results = []
 
     for case in suite.cases:
-        conditions = list(EvaluationCondition)
-        generator.shuffle(conditions)
-        outcomes: dict[str, Any] = {}
-        for condition in conditions:
-            session_id = _session_id(evaluation_id, case.case_id, condition)
-            outcomes[condition.value] = _run_condition(
-                case,
-                condition,
-                runtime_factory,
-                session_id,
+        for repetition in range(1, repetitions + 1):
+            trial_sampling_seed = _trial_sampling_seed(
+                sampling_seed,
+                case.case_id,
+                repetition,
             )
-        case_results.append(
-            {
-                "case_id": case.case_id,
-                "domain": case.domain,
-                "execution_order": [item.value for item in conditions],
-                "conditions": outcomes,
-            }
-        )
+            conditions = list(EvaluationCondition)
+            generator.shuffle(conditions)
+            outcomes: dict[str, Any] = {}
+            for condition in conditions:
+                session_id = _session_id(
+                    evaluation_id,
+                    case.case_id,
+                    repetition,
+                    condition,
+                )
+                outcomes[condition.value] = _run_condition(
+                    case,
+                    condition,
+                    runtime_factory,
+                    session_id,
+                    trial_sampling_seed,
+                )
+            case_results.append(
+                {
+                    "case_id": case.case_id,
+                    "domain": case.domain,
+                    "repetition": repetition,
+                    "sampling_seed": trial_sampling_seed,
+                    "execution_order": [item.value for item in conditions],
+                    "conditions": outcomes,
+                }
+            )
 
     completed_at = _utc_now()
     return {
@@ -106,6 +134,8 @@ def run_comparative_evaluation(
         "suite_id": suite.suite_id,
         "suite_sha256": suite.sha256(),
         "seed": seed,
+        "repetitions": repetitions,
+        "sampling_seed": sampling_seed,
         "runtime_policy": policy,
         "started_at": started_at,
         "completed_at": completed_at,
@@ -165,10 +195,11 @@ def _run_condition(
     condition: EvaluationCondition,
     runtime_factory: RuntimeFactory,
     session_id: str,
+    sampling_seed: int,
 ) -> dict[str, Any]:
     try:
         runtime = _ObservedRuntime(
-            runtime_factory(case.contract, session_id)
+            runtime_factory(case.contract, session_id, sampling_seed)
         )
     except Exception as exc:
         return _runtime_failure(case, condition, None, exc)
@@ -381,16 +412,25 @@ def _score(
     return {
         "all_gates_passed": all(result.passed for result in results),
         "gate_results": [result.to_dict() for result in results],
+        "dimensions": _score_dimensions(results),
     }
 
 
 def _evaluation_gates(case: EvaluationCase) -> tuple[Gate, ...]:
-    return (
-        ResultEqualsGate(case.expected_result),
-        ActionPolicyGate(),
-        ClaimEvidenceGate(),
-        RequiredEvidenceGate(),
+    gates: list[Gate] = []
+    if "result_spec" in case.contract.inputs:
+        gates.append(ResultSpecGate())
+    if case.domain == "policy_decision":
+        gates.extend((PolicyDecisionGate(), PolicyReasonCodeGate()))
+    gates.extend(
+        (
+            ResultEqualsGate(case.expected_result),
+            ActionPolicyGate(),
+            ClaimEvidenceGate(),
+            RequiredEvidenceGate(),
+        )
     )
+    return tuple(gates)
 
 
 def _summarize(case_results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -421,6 +461,8 @@ def _summarize(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         )
         summary[condition.value] = {
             "cases": len(outcomes),
+            "unique_cases": len({case["case_id"] for case in case_results}),
+            "trials": len(outcomes),
             "completed": len(completed),
             "runtime_failures": len(outcomes) - len(completed),
             "initial_passes": initial_passes,
@@ -432,6 +474,14 @@ def _summarize(case_results: list[dict[str, Any]]) -> dict[str, Any]:
                 "initial_score",
             ),
             "final_gate_passes": _gate_pass_counts(
+                completed,
+                "final_score",
+            ),
+            "initial_dimension_passes": _dimension_pass_counts(
+                completed,
+                "initial_score",
+            ),
+            "final_dimension_passes": _dimension_pass_counts(
                 completed,
                 "final_score",
             ),
@@ -509,6 +559,38 @@ def _gate_pass_counts(
     return dict(sorted(counts.items()))
 
 
+def _score_dimensions(results: tuple[Any, ...]) -> dict[str, bool | None]:
+    verdicts = {result.gate: result.passed for result in results}
+    dimension_names = (
+        "result_spec",
+        "policy_decision",
+        "policy_reason_code",
+        "result_equals",
+        "action_policy",
+        "claim_evidence",
+        "required_evidence",
+    )
+    return {
+        name: verdicts.get(name)
+        for name in dimension_names
+    }
+
+
+def _dimension_pass_counts(
+    outcomes: list[dict[str, Any]],
+    score_key: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for outcome in outcomes:
+        for dimension, passed in outcome[score_key]["dimensions"].items():
+            if passed is None:
+                continue
+            counts.setdefault(dimension, 0)
+            if passed:
+                counts[dimension] += 1
+    return dict(sorted(counts.items()))
+
+
 def _usage_records(runtime: AgentRuntime) -> list[dict[str, Any]]:
     records = getattr(runtime, "usage_records", ())
     if not isinstance(records, (list, tuple)):
@@ -523,11 +605,22 @@ def _is_number(value: Any) -> bool:
 def _session_id(
     evaluation_id: str,
     case_id: str,
+    repetition: int,
     condition: EvaluationCondition,
 ) -> str:
-    raw = f"{evaluation_id}:{case_id}:{condition.value}"
+    raw = f"{evaluation_id}:{case_id}:{repetition}:{condition.value}"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     return f"evaluation:{digest}"
+
+
+def _trial_sampling_seed(
+    base_seed: int,
+    case_id: str,
+    repetition: int,
+) -> int:
+    raw = f"{base_seed}:{case_id}:{repetition}"
+    digest = hashlib.sha256(raw.encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") & 0x7FFFFFFF
 
 
 def _canonical_json(value: Any) -> str:

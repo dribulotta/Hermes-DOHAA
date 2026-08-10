@@ -61,6 +61,9 @@ class HermesApiTests(unittest.TestCase):
             model="dohaa-runtime",
             reasoning_effort="none",
             timeout_seconds=42.0,
+            temperature=0.0,
+            top_p=1.0,
+            sampling_seed=17,
         )
 
         with patch("urllib.request.urlopen", return_value=response) as urlopen:
@@ -84,6 +87,9 @@ class HermesApiTests(unittest.TestCase):
             body["model_options"],
             {"reasoning": {"enabled": False, "effort": "none"}},
         )
+        self.assertEqual(body["temperature"], 0.0)
+        self.assertEqual(body["top_p"], 1.0)
+        self.assertEqual(body["seed"], 17)
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 42.0)
         self.assertEqual(
             runtime.usage_records,
@@ -115,6 +121,14 @@ class HermesApiTests(unittest.TestCase):
             HermesApiRuntime(reasoning_effort="unbounded")
         with self.assertRaises(ValueError):
             HermesApiRuntime(reasoning_effort=1)  # type: ignore[arg-type]
+
+    def test_runtime_rejects_invalid_sampling_policy(self):
+        with self.assertRaises(ValueError):
+            HermesApiRuntime(temperature=-0.1)
+        with self.assertRaises(ValueError):
+            HermesApiRuntime(top_p=0)
+        with self.assertRaises(ValueError):
+            HermesApiRuntime(sampling_seed=True)
 
 
 if __name__ == "__main__":

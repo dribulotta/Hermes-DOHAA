@@ -4,8 +4,11 @@ from .gates import (
     Gate,
     GateFailureCode,
     GateResult,
+    PolicyDecisionGate,
+    PolicyReasonCodeGate,
     RequiredEvidenceGate,
     ResultEqualsGate,
+    ResultSpecGate,
 )
 
 __all__ = [
@@ -14,6 +17,9 @@ __all__ = [
     "Gate",
     "GateFailureCode",
     "GateResult",
+    "PolicyDecisionGate",
+    "PolicyReasonCodeGate",
     "RequiredEvidenceGate",
     "ResultEqualsGate",
+    "ResultSpecGate",
 ]

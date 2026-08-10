@@ -25,6 +25,14 @@ identifier. The direct and reflection conditions never receive the
 oracle. DOHAA receives only a stable `result.mismatch` verdict when the result
 is wrong, not the expected value itself.
 
+Exact output vocabularies are not secret oracles. Cases declare a
+contract-visible `inputs.result_spec` with required keys, JSON types, and enum
+values. This prevents scoring a model against an identifier it could not have
+known. Policy-decision cases additionally use deterministic gates that derive
+the required decision and stable reason code from the supplied policy and
+hypothetical request. Their field-specific feedback reveals no information
+beyond those contract inputs.
+
 The suite loader rejects a contract whose inputs contain an `expected_result`
 field. Suite and contract authors must also review inputs for indirect leakage.
 
@@ -38,8 +46,12 @@ The public example exercises the runner but is not a protected benchmark:
       --hermes-model dohaa-runtime \
       --model-artifact-id qwen3.6-27b-q6_k-PINNED_DIGEST \
       --reasoning-effort none \
+      --temperature 0 \
+      --top-p 1 \
+      --sampling-seed 17 \
       --hermes-timeout-seconds 120 \
       --seed 20260810 \
+      --repetitions 3 \
       --output /var/lib/hermes-dohaa/evaluation-20260810.json
 
 The output path must not already exist. The runner creates the result with mode
@@ -49,6 +61,13 @@ The output path must not already exist. The runner creates the result with mode
 runner cannot prove that the model alias actually resolves to that artifact.
 Verify and preserve the model-server configuration independently.
 
+`--seed` controls randomized condition order. `--sampling-seed` is a recorded
+base from which the runner deterministically derives one model seed for each
+case and repetition; the three paired conditions share that trial seed.
+`--temperature` and `--top-p` are also sent to the OpenAI-compatible model API.
+Reproducibility still depends on the model server and backend. `--repetitions`
+runs every case and condition between 1 and 100 times; the default is one.
+
 ## Result metrics
 
 The result records:
@@ -57,6 +76,8 @@ The result records:
 - the randomized order for every case;
 - initial and final proposals for each condition;
 - each deterministic gate verdict;
+- per-dimension verdicts for result specification, policy semantics, exact
+  equality, action policy, and evidence;
 - initial and final pass counts and rates;
 - paired wins, losses, and ties between conditions;
 - improvements and regressions;
@@ -78,11 +99,12 @@ frozen before execution:
 3. use exactly two attempts in every contract;
 4. pin the model alias, model artifact, context, reasoning policy, timeout, and
    server configuration;
-5. choose and record the seed before viewing outputs;
-6. execute all 20 paired cases in one result artifact;
-7. preserve the suite, result, model identity, runtime version, and external
+5. choose and record order and sampling seeds before viewing outputs;
+6. choose the repetition count before viewing outputs;
+7. execute all 20 paired cases in one result artifact;
+8. preserve the suite, result, model identity, runtime version, and external
    SHA-256 hashes together;
-8. report every case, including failures and regressions.
+9. report every case, repetition, failure, and regression.
 
 The public development suite is visible to models and developers and cannot be
 used as evidence of generalization. Do not tune prompts, gates, or cases after

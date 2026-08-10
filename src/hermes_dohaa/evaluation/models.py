@@ -48,9 +48,24 @@ class EvaluationCase:
             raise EvaluationSuiteError(
                 "expected_result is reserved for the hidden evaluation oracle"
             )
+        if not isinstance(contract.inputs.get("result_spec"), dict):
+            raise EvaluationSuiteError(
+                "evaluation contracts must declare inputs.result_spec"
+            )
+        domain = _required_text(raw, "domain")
+        if domain == "policy_decision" and (
+            not isinstance(contract.inputs.get("policy"), dict)
+            or not isinstance(
+                contract.inputs.get("hypothetical_request"),
+                dict,
+            )
+        ):
+            raise EvaluationSuiteError(
+                "policy_decision cases require policy and hypothetical_request inputs"
+            )
         return cls(
             case_id=_required_text(raw, "case_id"),
-            domain=_required_text(raw, "domain"),
+            domain=domain,
             contract=contract,
             expected_result=_json_clone(raw.get("expected_result")),
         )

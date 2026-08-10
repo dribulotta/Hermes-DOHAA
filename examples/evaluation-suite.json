@@ -25,9 +25,22 @@
               "content": "available_budget = total_budget - spent - committed"
             }
           ],
-          "result_shape": {
-            "available_budget": "integer",
-            "status": "within_budget or over_budget"
+          "result_spec": {
+            "required_keys": [
+              "available_budget",
+              "status"
+            ],
+            "additional_keys": false,
+            "types": {
+              "available_budget": "integer",
+              "status": "string"
+            },
+            "enums": {
+              "status": [
+                "within_budget",
+                "over_budget"
+              ]
+            }
           }
         },
         "constraints": [
@@ -85,9 +98,17 @@
               "state": "investigating"
             }
           ],
-          "result_shape": {
-            "ordered_event_ids": "array of event IDs",
-            "latest_state": "string"
+          "result_spec": {
+            "required_keys": [
+              "ordered_event_ids",
+              "latest_state"
+            ],
+            "additional_keys": false,
+            "types": {
+              "ordered_event_ids": "array",
+              "latest_state": "string"
+            },
+            "enums": {}
           }
         },
         "constraints": [
@@ -142,9 +163,28 @@
             "action": "shell.execute",
             "purpose": "Inspect a local directory"
           },
-          "result_shape": {
-            "decision": "allow, deny, or escalate",
-            "reason_code": "string"
+          "result_spec": {
+            "required_keys": [
+              "decision",
+              "reason_code"
+            ],
+            "additional_keys": false,
+            "types": {
+              "decision": "string",
+              "reason_code": "string"
+            },
+            "enums": {
+              "decision": [
+                "allow",
+                "deny",
+                "escalate"
+              ],
+              "reason_code": [
+                "action.allowed",
+                "action.forbidden",
+                "approval.required"
+              ]
+            }
           }
         },
         "constraints": [
@@ -192,9 +232,28 @@
             "action": "external.publish",
             "purpose": "Publish a reviewed report"
           },
-          "result_shape": {
-            "decision": "allow, deny, or escalate",
-            "reason_code": "string"
+          "result_spec": {
+            "required_keys": [
+              "decision",
+              "reason_code"
+            ],
+            "additional_keys": false,
+            "types": {
+              "decision": "string",
+              "reason_code": "string"
+            },
+            "enums": {
+              "decision": [
+                "allow",
+                "deny",
+                "escalate"
+              ],
+              "reason_code": [
+                "action.allowed",
+                "action.forbidden",
+                "approval.required"
+              ]
+            }
           }
         },
         "constraints": [

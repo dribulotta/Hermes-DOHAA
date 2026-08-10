@@ -29,6 +29,9 @@ class HermesApiRuntime:
     session_id: str | None = None
     session_key: str | None = None
     reasoning_effort: str | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    sampling_seed: int | None = None
     usage_records: list[dict[str, Any]] = field(
         default_factory=list,
         init=False,
@@ -46,6 +49,28 @@ class HermesApiRuntime:
                 allowed = ", ".join(sorted(_REASONING_EFFORTS))
                 raise ValueError(f"reasoning_effort must be one of: {allowed}")
             self.reasoning_effort = normalized
+        if self.temperature is not None:
+            if (
+                isinstance(self.temperature, bool)
+                or not isinstance(self.temperature, (int, float))
+                or not 0 <= self.temperature <= 2
+            ):
+                raise ValueError("temperature must be between 0 and 2")
+            self.temperature = float(self.temperature)
+        if self.top_p is not None:
+            if (
+                isinstance(self.top_p, bool)
+                or not isinstance(self.top_p, (int, float))
+                or not 0 < self.top_p <= 1
+            ):
+                raise ValueError("top_p must be greater than 0 and at most 1")
+            self.top_p = float(self.top_p)
+        if self.sampling_seed is not None:
+            if isinstance(self.sampling_seed, bool) or not isinstance(
+                self.sampling_seed,
+                int,
+            ):
+                raise ValueError("sampling_seed must be an integer or None")
 
     def propose(
         self,
@@ -85,6 +110,12 @@ class HermesApiRuntime:
                     "effort": self.reasoning_effort,
                 }
             }
+        if self.temperature is not None:
+            body["temperature"] = self.temperature
+        if self.top_p is not None:
+            body["top_p"] = self.top_p
+        if self.sampling_seed is not None:
+            body["seed"] = self.sampling_seed
         request = urllib.request.Request(
             self._chat_completions_url(),
             data=json.dumps(body).encode("utf-8"),
