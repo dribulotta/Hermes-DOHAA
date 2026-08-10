@@ -6,7 +6,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Sequence
 
 from hermes_dohaa.contracts.models import TaskContract
@@ -29,6 +29,11 @@ class HermesApiRuntime:
     session_id: str | None = None
     session_key: str | None = None
     reasoning_effort: str | None = None
+    usage_records: list[dict[str, Any]] = field(
+        default_factory=list,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.timeout_seconds <= 0:
@@ -91,6 +96,9 @@ class HermesApiRuntime:
                 payload = json.load(response)
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise HermesApiError(f"Hermes API request failed: {exc}") from exc
+
+        usage = payload.get("usage") if isinstance(payload, dict) else None
+        self.usage_records.append(dict(usage) if isinstance(usage, dict) else {})
 
         try:
             content = payload["choices"][0]["message"]["content"]

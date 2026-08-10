@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dribulotta/Hermes-DOHAA/schemas/evaluation-suite.schema.json",
+  "title": "Hermes-DOHAA comparative evaluation suite",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite_id",
+    "description",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "suite_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id",
+          "domain",
+          "contract",
+          "expected_result"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "domain": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contract": {
+            "$ref": "task-contract.schema.json"
+          },
+          "expected_result": true
+        }
+      }
+    }
+  }
+}

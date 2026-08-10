@@ -255,14 +255,15 @@ evidence history.
 
 A conservative implementation order is:
 
-1. structured failure classification;
-2. immutable candidate storage;
-3. regression-test generation as an untrusted proposal;
-4. independent test execution;
-5. protected evaluation sets;
-6. human-reviewed promotion records;
-7. shadow execution;
-8. automated rollback triggers.
+1. paired baseline and DOHAA quality evaluation;
+2. structured failure classification;
+3. immutable candidate storage;
+4. regression-test generation as an untrusted proposal;
+5. independent test execution;
+6. protected evaluation sets;
+7. human-reviewed promotion records;
+8. shadow execution;
+9. automated rollback triggers.
 
 Until these controls exist, Hermes-DOHAA should describe its retry capability
 as bounded repair rather than autonomous learning.

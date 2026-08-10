@@ -41,6 +41,7 @@ The `v0.1` bootstrap implements:
 - structured verifier feedback and stable terminal reason codes;
 - fail-closed approval checkpoints that preserve the original run identity;
 - source-bound control-plane manifests for resumable approvals;
+- a paired quality-evaluation harness for direct, reflective, and DOHAA runs;
 - a standard-library-only runtime with unit and integration tests.
 
 ```mermaid
@@ -103,6 +104,14 @@ The command opens the database in read-only mode, verifies the complete hash
 chain, and returns a machine-readable JSON result. Use `--run-id` to report the
 events associated with one run after the complete chain has passed.
 
+Run the public development evaluation example:
+
+    hermes-dohaa evaluate examples/evaluation-suite.json \
+      --output .dohaa/evaluation.json
+
+See [Comparative quality evaluation](docs/evaluation.md) for the experimental
+controls, private-pilot protocol, metrics, and interpretation limits.
+
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
 ## Deployment and operations
@@ -113,6 +122,7 @@ running the cognitive runtime in a separate, restricted trust domain:
 - [Isolated deployment guide](docs/deployment.md)
 - [Operations runbook](docs/operations.md)
 - [Governed learning loop](docs/learning-loop.md)
+- [Comparative quality evaluation](docs/evaluation.md)
 - [Runtime environment example](deploy/env/runtime.env.example)
 - [Hardened systemd service example](deploy/systemd/hermes-runtime.service.example)
 - [Network-isolation nftables example](deploy/nftables/runtime-isolation.nft.example)
