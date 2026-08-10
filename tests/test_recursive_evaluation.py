@@ -11,6 +11,9 @@ from hermes_dohaa.evaluation.statistics import analyze_unique_cases
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 def contract(spec):
     return TaskContract.from_dict({
         "schema_version":"1.0", "contract_id":"synthetic", "objective":"Validate synthetic output",
@@ -41,6 +44,31 @@ class RecursiveResultTests(unittest.TestCase):
                 self.assertTrue(gate.evaluate(contract(spec), Proposal({"value":value})).passed)
         self.assertFalse(gate.evaluate(contract(spec), Proposal({"value":False})).passed)
 
+    def test_flat_array_accepts_arbitrary_json_elements(self):
+        spec={"required_keys":["items"],"additional_keys":False,
+              "types":{"items":"array"},"enums":{}}
+        items=[None, True, 1, 1.5, "text", ["nested"], {"key":"value"}]
+        result=ResultSpecGate().evaluate(contract(spec), Proposal({"items":items}))
+        self.assertTrue(result.passed)
+
+    def test_public_suite_expected_results_match_result_specs(self):
+        suite=EvaluationSuite.from_json_file(
+            REPO_ROOT / "examples/evaluation-suite.json"
+        )
+        results={
+            case.case_id: ResultSpecGate().evaluate(
+                case.contract,
+                Proposal(case.expected_result),
+            )
+            for case in suite.cases
+        }
+        self.assertEqual(["e2", "e1", "e3"], next(
+            case.expected_result["ordered_event_ids"]
+            for case in suite.cases
+            if case.case_id == "incident-timeline"
+        ))
+        self.assertTrue(all(result.passed for result in results.values()), results)
+
     def test_number_accepts_integers_and_floats_but_not_booleans(self):
         specs=(
             {"required_keys":["value"],"additional_keys":False,
@@ -70,11 +98,20 @@ class RecursiveResultTests(unittest.TestCase):
         self.assertEqual(100,result.details["reported_violation_count"])
         self.assertTrue(result.details["truncated"])
 
+    def test_recursive_array_rejects_wrong_item_type(self):
+        spec={"spec_version":"2.0","type":"array","items":{"type":"integer"}}
+        result=ResultSpecGate().evaluate(contract(spec), Proposal([1, "wrong"]))
+        self.assertFalse(result.passed)
+        self.assertEqual("result.type_mismatch", result.failure_code)
+        self.assertEqual("/1", result.details["violations"][0]["path"])
+
     def test_max_depth_and_invalid_pre_runtime(self):
         node={"type":"string"}
         for _ in range(33): node={"type":"array","items":node}
         with self.assertRaises(ValueError): parse_result_spec({"spec_version":"2.0",**node})
-        raw=json.loads(Path("examples/evaluation-suite.json").read_text())
+        raw=json.loads(
+            (REPO_ROOT / "examples/evaluation-suite.json").read_text()
+        )
         raw["cases"][0]["contract"]["inputs"]["result_spec"]={"spec_version":"2.0","type":"string","items":{"type":"string"}}
         with self.assertRaises(EvaluationSuiteError): EvaluationSuite.from_dict(raw)
 
@@ -105,7 +142,9 @@ class RecursiveResultTests(unittest.TestCase):
         for a,b,c,d,label in cases: self.assertEqual(label,_repair_transition(score(a,b),score(c,d)))
 
     def test_schema_json(self):
-        schema=json.loads(Path("schemas/evaluation-suite.schema.json").read_text())
+        schema=json.loads(
+            (REPO_ROOT / "schemas/evaluation-suite.schema.json").read_text()
+        )
         self.assertIn("recursiveResultSpec",schema["$defs"])
 
     def test_domain_statistics_keep_runtime_failures(self):
