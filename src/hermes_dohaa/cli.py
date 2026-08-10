@@ -10,6 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
+from hermes_dohaa import __version__
 from hermes_dohaa.assurance.gates import (
     ActionPolicyGate,
     ClaimEvidenceGate,
@@ -23,6 +24,12 @@ from hermes_dohaa.controller.engine import (
     RunResumeErrorCode,
 )
 from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
+from hermes_dohaa.evaluation import (
+    EvaluationSuite,
+    EvaluationSuiteError,
+    run_comparative_evaluation,
+    write_evaluation_result,
+)
 from hermes_dohaa.runtime.hermes_api import HermesApiRuntime
 
 
@@ -79,6 +86,19 @@ def build_parser() -> argparse.ArgumentParser:
     _add_runtime_arguments(smoke, default_reasoning_effort="none")
     smoke.add_argument("--ledger", type=Path, default=Path(".dohaa/smoke.sqlite3"))
 
+    evaluate = subparsers.add_parser(
+        "evaluate",
+        help="Compare direct, self-reflective, and DOHAA-controlled responses",
+    )
+    evaluate.add_argument("suite", type=Path)
+    evaluate.add_argument("--output", type=Path, required=True)
+    evaluate.add_argument("--seed", type=int, default=0)
+    evaluate.add_argument(
+        "--model-artifact-id",
+        help="Pinned model artifact identifier recorded with the evaluation",
+    )
+    _add_runtime_arguments(evaluate, default_reasoning_effort="none")
+
     verify_ledger = subparsers.add_parser(
         "verify-ledger",
         help="Verify an evidence ledger offline without modifying it",
@@ -97,6 +117,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_smoke(args)
     if args.command == "verify-ledger":
         return _run_verify_ledger(args)
+    if args.command == "evaluate":
+        return _run_evaluate(args)
 
     try:
         contract = TaskContract.from_json_file(args.contract)
@@ -171,6 +193,58 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["status"] = result.status.value
     print(json.dumps(payload, ensure_ascii=False, default=str))
     return 0 if result.status.value == "succeeded" else 1
+
+
+def _run_evaluate(args: argparse.Namespace) -> int:
+    try:
+        suite = EvaluationSuite.from_json_file(args.suite)
+
+        def runtime_factory(contract, session_id):
+            del contract
+            return HermesApiRuntime(
+                base_url=args.hermes_url,
+                model=args.hermes_model,
+                timeout_seconds=args.hermes_timeout_seconds,
+                session_id=session_id,
+                reasoning_effort=args.reasoning_effort,
+            )
+
+        result = run_comparative_evaluation(
+            suite,
+            runtime_factory,
+            seed=args.seed,
+            runtime_policy={
+                "adapter": "hermes_api",
+                "hermes_dohaa_version": __version__,
+                "hermes_url": args.hermes_url,
+                "model_alias": args.hermes_model,
+                "model_artifact_id": args.model_artifact_id,
+                "reasoning_effort": args.reasoning_effort,
+                "timeout_seconds": args.hermes_timeout_seconds,
+            },
+        )
+        write_evaluation_result(args.output, result)
+    except (EvaluationSuiteError, OSError, ValueError) as exc:
+        payload = {
+            "status": "failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    payload = {
+        "status": "completed",
+        "evaluation_id": result["evaluation_id"],
+        "suite_id": result["suite_id"],
+        "suite_sha256": result["suite_sha256"],
+        "seed": result["seed"],
+        "runtime_policy": result["runtime_policy"],
+        "output": str(args.output),
+        "summary": result["summary"],
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
 
 
 def _run_verify_ledger(args: argparse.Namespace) -> int:

@@ -46,7 +46,12 @@ class HermesApiTests(unittest.TestCase):
                                 )
                             }
                         }
-                    ]
+                    ],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 20,
+                        "total_tokens": 120,
+                    },
                 }
             ).encode("utf-8")
         )
@@ -80,6 +85,16 @@ class HermesApiTests(unittest.TestCase):
             {"reasoning": {"enabled": False, "effort": "none"}},
         )
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 42.0)
+        self.assertEqual(
+            runtime.usage_records,
+            [
+                {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 20,
+                    "total_tokens": 120,
+                }
+            ],
+        )
         user_payload = json.loads(body["messages"][1]["content"])
         self.assertEqual(
             user_payload["verifier_feedback"],
