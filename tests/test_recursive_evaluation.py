@@ -25,6 +25,35 @@ class RecursiveResultTests(unittest.TestCase):
         spec={"required_keys":["answer"],"additional_keys":False,"types":{"answer":"string"},"enums":{}}
         self.assertTrue(ResultSpecGate().evaluate(contract(spec), Proposal({"answer":"ok"})).passed)
 
+    def test_flat_required_key_without_constraint_only_requires_presence(self):
+        spec={"required_keys":["value"],"additional_keys":False,"types":{},"enums":{}}
+        gate=ResultSpecGate()
+        for value in (None, True, 7, 2.5, ["item"], {"nested":"value"}):
+            with self.subTest(value=value):
+                self.assertTrue(gate.evaluate(contract(spec), Proposal({"value":value})).passed)
+
+    def test_flat_untyped_enum_accepts_mixed_json_types(self):
+        spec={"required_keys":["value"],"additional_keys":False,"types":{},
+              "enums":{"value":[None, True, 1, 1.0, "one"]}}
+        gate=ResultSpecGate()
+        for value in (None, True, 1, 1.0, "one"):
+            with self.subTest(value=value):
+                self.assertTrue(gate.evaluate(contract(spec), Proposal({"value":value})).passed)
+        self.assertFalse(gate.evaluate(contract(spec), Proposal({"value":False})).passed)
+
+    def test_number_accepts_integers_and_floats_but_not_booleans(self):
+        specs=(
+            {"required_keys":["value"],"additional_keys":False,
+             "types":{"value":"number"},"enums":{}},
+            {"spec_version":"2.0","type":"object","required":["value"],
+             "properties":{"value":{"type":"number"}}},
+        )
+        for spec in specs:
+            gate=ResultSpecGate()
+            self.assertTrue(gate.evaluate(contract(spec), Proposal({"value":1})).passed)
+            self.assertTrue(gate.evaluate(contract(spec), Proposal({"value":1.5})).passed)
+            self.assertFalse(gate.evaluate(contract(spec), Proposal({"value":True})).passed)
+
     def test_nested_diagnostics_pointer_and_multiple(self):
         spec={"spec_version":"2.0","type":"object","required":["a/b","items"],"additional_properties":False,
               "properties":{"a/b":{"type":"integer"},"items":{"type":"array","items":{"type":"object",

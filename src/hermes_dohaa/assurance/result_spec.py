@@ -13,7 +13,7 @@ MAX_VIOLATIONS = 100
 
 @dataclass(frozen=True, slots=True)
 class ResultNode:
-    type: str
+    type: str | None
     enum: tuple[Any, ...] | None = None
     properties: tuple[tuple[str, "ResultNode"], ...] = ()
     required: tuple[str, ...] = ()
@@ -93,9 +93,7 @@ def _parse_flat(raw: Mapping[str, Any]) -> ResultNode:
     properties = []
     for key in required:
         kind = types.get(key)
-        if kind is None:
-            kind = "string" if key not in enums else _infer_enum_type(enums[key])
-        if kind not in JSON_TYPES:
+        if kind is not None and kind not in JSON_TYPES:
             raise ValueError(f"unsupported JSON type {kind!r}")
         enum = enums.get(key)
         parsed_enum = _parse_enum(enum, kind) if enum is not None else None
@@ -140,7 +138,7 @@ def _parse_node(raw: Any, depth: int) -> ResultNode:
 
 def _validate(value: Any, node: ResultNode, path: str, out: list[dict[str, Any]]) -> int:
     actual = json_type(value)
-    if actual != node.type:
+    if node.type is not None and not _type_matches(actual, node.type):
         _append(out, {"path": path, "code": "result.type_mismatch",
                       "expected_type": node.type, "actual_type": actual or "non_canonical"})
         return 1
@@ -188,20 +186,19 @@ def _string_list(value: Any, label: str, nonempty: bool = False) -> tuple[str, .
     return tuple(value)
 
 
-def _parse_enum(value: Any, kind: str) -> tuple[Any, ...]:
+def _parse_enum(value: Any, kind: str | None) -> tuple[Any, ...]:
     if not isinstance(value, list) or not value:
         raise ValueError("enum must be a non-empty array")
-    if any(json_type(item) != kind for item in value):
+    if any(json_type(item) is None for item in value):
+        raise ValueError("enum values must be canonical JSON")
+    if kind is not None and any(not _type_matches(json_type(item), kind) for item in value):
         raise ValueError("enum values must match the declared type")
     if any(json_equal(a, b) for index, a in enumerate(value) for b in value[index + 1:]):
         raise ValueError("enum values must be unique")
     return tuple(value)
 
 
-def _infer_enum_type(value: Any) -> str:
-    if not isinstance(value, list) or not value:
-        raise ValueError("enum must be a non-empty array")
-    kind = json_type(value[0])
-    if kind is None or any(json_type(item) != kind for item in value):
-        raise ValueError("enum values must share one JSON type")
-    return kind
+def _type_matches(actual: str | None, expected: str) -> bool:
+    return actual == expected or (
+        expected == "number" and actual in {"integer", "number"}
+    )
