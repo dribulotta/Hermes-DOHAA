@@ -26,12 +26,25 @@ class EvidenceItem:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "EvidenceItem":
-        return cls.create(
+        item = cls.create(
             _text(raw, "evidence_id"),
             _text(raw, "kind"),
             _text(raw, "source"),
             raw.get("content"),
         )
+        provided_sha256 = raw.get("sha256")
+        if provided_sha256 is not None and provided_sha256 != item.sha256:
+            raise ValueError("evidence sha256 does not match its content")
+        return item
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "evidence_id": self.evidence_id,
+            "kind": self.kind,
+            "source": self.source,
+            "content": self.content,
+            "sha256": self.sha256,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +58,12 @@ class Claim:
         if not isinstance(evidence_ids, list) or any(not isinstance(item, str) for item in evidence_ids):
             raise ValueError("claim evidence_ids must be a list of strings")
         return cls(_text(raw, "statement"), tuple(evidence_ids))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "statement": self.statement,
+            "evidence_ids": list(self.evidence_ids),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,25 +91,16 @@ class Proposal:
             requested_actions=tuple(actions_raw),
         )
 
-    def fingerprint(self) -> str:
-        raw = {
+    def to_dict(self) -> dict[str, Any]:
+        return {
             "result": self.result,
-            "claims": [
-                {"statement": item.statement, "evidence_ids": list(item.evidence_ids)}
-                for item in self.claims
-            ],
-            "evidence": [
-                {
-                    "evidence_id": item.evidence_id,
-                    "kind": item.kind,
-                    "source": item.source,
-                    "content": item.content,
-                    "sha256": item.sha256,
-                }
-                for item in self.evidence
-            ],
+            "claims": [item.to_dict() for item in self.claims],
+            "evidence": [item.to_dict() for item in self.evidence],
             "requested_actions": list(self.requested_actions),
         }
+
+    def fingerprint(self) -> str:
+        raw = self.to_dict()
         canonical = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

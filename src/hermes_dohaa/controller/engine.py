@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Iterable
+from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
 from hermes_dohaa.assurance.gates import Gate, GateResult
@@ -33,6 +34,118 @@ class RunReasonCode(StrEnum):
     NO_PROGRESS = "repair.no_progress"
     ATTEMPT_BUDGET_EXHAUSTED = "budget.exhausted"
     HUMAN_APPROVAL_REQUIRED = "approval.required"
+
+
+class RunResumeErrorCode(StrEnum):
+    NOT_FOUND = "resume.not_found"
+    NOT_ELIGIBLE = "resume.not_eligible"
+    CONTRACT_MISMATCH = "resume.contract_mismatch"
+    APPROVAL_MISSING = "resume.approval_missing"
+    CHECKPOINT_INVALID = "resume.checkpoint_invalid"
+
+
+class RunResumeError(RuntimeError):
+    def __init__(self, code: RunResumeErrorCode, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class RunCheckpoint:
+    schema_version: str
+    run_id: str
+    contract_sha256: str
+    attempt: int
+    proposal: Proposal
+    proposal_fingerprint: str
+    gate_results: tuple[GateResult, ...]
+    reason_code: RunReasonCode
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "1.0":
+            raise ValueError(
+                f"unsupported checkpoint schema: {self.schema_version!r}"
+            )
+        if not isinstance(self.run_id, str) or not self.run_id.strip():
+            raise ValueError("checkpoint run_id must be a non-empty string")
+        if (
+            not isinstance(self.contract_sha256, str)
+            or len(self.contract_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in self.contract_sha256)
+        ):
+            raise ValueError("checkpoint contract_sha256 must be a lowercase SHA-256 digest")
+        if isinstance(self.attempt, bool) or not isinstance(self.attempt, int):
+            raise ValueError("checkpoint attempt must be an integer")
+        if self.attempt < 1:
+            raise ValueError("checkpoint attempt must be positive")
+        if (
+            not isinstance(self.proposal_fingerprint, str)
+            or self.proposal.fingerprint() != self.proposal_fingerprint
+        ):
+            raise ValueError("checkpoint proposal fingerprint does not match its payload")
+        if not self.gate_results or not all(
+            result.passed for result in self.gate_results
+        ):
+            raise ValueError("approval checkpoints require passing gate results")
+        gate_names = [result.gate for result in self.gate_results]
+        if len(gate_names) != len(set(gate_names)):
+            raise ValueError("checkpoint gate names must be unique")
+        if self.reason_code is not RunReasonCode.HUMAN_APPROVAL_REQUIRED:
+            raise ValueError("checkpoint reason must be approval.required")
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "RunCheckpoint":
+        allowed = {
+            "schema_version",
+            "run_id",
+            "contract_sha256",
+            "attempt",
+            "proposal",
+            "proposal_fingerprint",
+            "gate_results",
+            "reason_code",
+        }
+        unknown = set(raw) - allowed
+        if unknown:
+            raise ValueError(
+                f"unknown checkpoint fields: {sorted(unknown)}"
+            )
+        proposal_raw = raw.get("proposal")
+        gate_results_raw = raw.get("gate_results")
+        if not isinstance(proposal_raw, dict):
+            raise ValueError("checkpoint proposal must be an object")
+        if not isinstance(gate_results_raw, list) or not all(
+            isinstance(item, dict) for item in gate_results_raw
+        ):
+            raise ValueError("checkpoint gate_results must be a list of objects")
+        try:
+            reason_code = RunReasonCode(raw.get("reason_code"))
+        except ValueError as exc:
+            raise ValueError("checkpoint reason_code is invalid") from exc
+        return cls(
+            schema_version=raw.get("schema_version"),
+            run_id=raw.get("run_id"),
+            contract_sha256=raw.get("contract_sha256"),
+            attempt=raw.get("attempt"),
+            proposal=Proposal.from_dict(proposal_raw),
+            proposal_fingerprint=raw.get("proposal_fingerprint"),
+            gate_results=tuple(
+                GateResult.from_dict(item) for item in gate_results_raw
+            ),
+            reason_code=reason_code,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "run_id": self.run_id,
+            "contract_sha256": self.contract_sha256,
+            "attempt": self.attempt,
+            "proposal": self.proposal.to_dict(),
+            "proposal_fingerprint": self.proposal_fingerprint,
+            "gate_results": [result.to_dict() for result in self.gate_results],
+            "reason_code": self.reason_code.value,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,30 +233,37 @@ class DohaaController:
                 "gates.evaluated",
                 {
                     "attempt": attempt,
-                    "results": [
-                        {
-                            "gate": result.gate,
-                            "passed": result.passed,
-                            "reason": result.reason,
-                            "evidence_ids": list(result.evidence_ids),
-                            "failure_code": result.failure_code,
-                        }
-                        for result in last_gate_results
-                    ],
+                    "results": [result.to_dict() for result in last_gate_results],
                 },
             )
 
             if all(result.passed for result in last_gate_results):
                 if contract.requires_human_approval and not human_approved:
-                    return self._finish(
-                        run_id,
-                        RunStatus.ESCALATED,
-                        attempt,
-                        proposal,
-                        last_gate_results,
-                        RunReasonCode.HUMAN_APPROVAL_REQUIRED,
-                        "All gates passed; explicit human approval is still required",
+                    checkpoint = RunCheckpoint(
+                        schema_version="1.0",
+                        run_id=run_id,
+                        contract_sha256=_contract_sha256(contract),
+                        attempt=attempt,
+                        proposal=proposal,
+                        proposal_fingerprint=proposal.fingerprint(),
+                        gate_results=last_gate_results,
+                        reason_code=RunReasonCode.HUMAN_APPROVAL_REQUIRED,
                     )
+                    with self.ledger.transaction():
+                        self._record(
+                            run_id,
+                            "run.checkpointed",
+                            checkpoint.to_dict(),
+                        )
+                        return self._finish(
+                            run_id,
+                            RunStatus.ESCALATED,
+                            attempt,
+                            proposal,
+                            last_gate_results,
+                            RunReasonCode.HUMAN_APPROVAL_REQUIRED,
+                            "All gates passed; explicit human approval is still required",
+                        )
                 return self._finish(
                     run_id,
                     RunStatus.SUCCEEDED,
@@ -179,6 +299,129 @@ class DohaaController:
             "Attempt budget exhausted",
         )
 
+    def resume(
+        self,
+        contract: TaskContract,
+        run_id: str,
+        *,
+        human_approved: bool = False,
+    ) -> RunResult:
+        with self.ledger.transaction():
+            return self._resume_locked(
+                contract,
+                run_id,
+                human_approved=human_approved,
+            )
+
+    def _resume_locked(
+        self,
+        contract: TaskContract,
+        run_id: str,
+        *,
+        human_approved: bool,
+    ) -> RunResult:
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise RunResumeError(
+                RunResumeErrorCode.NOT_FOUND,
+                "resume run_id must be a non-empty string",
+            )
+
+        self.ledger.verify_chain()
+        records = tuple(self.ledger.records(run_id))
+        if not records:
+            raise RunResumeError(
+                RunResumeErrorCode.NOT_FOUND,
+                f"run ID not found: {run_id}",
+            )
+
+        finished = tuple(
+            record for record in records if record.event_type == "run.finished"
+        )
+        if not finished:
+            raise RunResumeError(
+                RunResumeErrorCode.NOT_ELIGIBLE,
+                "run has no terminal approval checkpoint",
+            )
+        terminal = finished[-1]
+        if terminal.payload.get("reason_code") != RunReasonCode.HUMAN_APPROVAL_REQUIRED.value:
+            raise RunResumeError(
+                RunResumeErrorCode.NOT_ELIGIBLE,
+                "only runs stopped at approval.required can be resumed",
+            )
+        if terminal.payload.get("status") != RunStatus.ESCALATED.value:
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                "approval terminal event has an invalid status",
+            )
+        if terminal.sequence != records[-1].sequence:
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                "approval terminal event is not the latest event for the run",
+            )
+        if len(records) < 2 or records[-2].event_type != "run.checkpointed":
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                "approval checkpoint is missing or out of order",
+            )
+        checkpoint_record = records[-2]
+        try:
+            checkpoint = RunCheckpoint.from_dict(checkpoint_record.payload)
+        except (TypeError, ValueError) as exc:
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                f"approval checkpoint is invalid: {exc}",
+            ) from exc
+
+        if checkpoint.run_id != run_id:
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                "approval checkpoint belongs to a different run",
+            )
+        if terminal.payload.get("attempts") != checkpoint.attempt:
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                "approval checkpoint attempt does not match the terminal event",
+            )
+        checkpoint_gate_names = tuple(
+            result.gate for result in checkpoint.gate_results
+        )
+        current_gate_names = tuple(gate.name for gate in self.gates)
+        if checkpoint_gate_names != current_gate_names:
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                "configured gates do not match the approval checkpoint",
+            )
+        if checkpoint.contract_sha256 != _contract_sha256(contract):
+            raise RunResumeError(
+                RunResumeErrorCode.CONTRACT_MISMATCH,
+                "task contract does not match the approval checkpoint",
+            )
+        if not human_approved:
+            raise RunResumeError(
+                RunResumeErrorCode.APPROVAL_MISSING,
+                "explicit human approval is required to resume this run",
+            )
+
+        self._record(
+            run_id,
+            "run.resumed",
+            {
+                "checkpoint_sequence": checkpoint_record.sequence,
+                "contract_sha256": checkpoint.contract_sha256,
+                "from_reason_code": checkpoint.reason_code.value,
+                "human_approved": True,
+            },
+        )
+        return self._finish(
+            run_id,
+            RunStatus.SUCCEEDED,
+            checkpoint.attempt,
+            checkpoint.proposal,
+            checkpoint.gate_results,
+            RunReasonCode.SUCCEEDED,
+            "All deterministic gates passed and explicit human approval was supplied",
+        )
+
     def _finish(
         self,
         run_id: str,
@@ -211,3 +454,7 @@ class DohaaController:
 
     def _record(self, run_id: str, event_type: str, payload: object) -> None:
         self.ledger.append(run_id, event_type, payload)
+
+
+def _contract_sha256(contract: TaskContract) -> str:
+    return hashlib.sha256(contract.canonical_json().encode("utf-8")).hexdigest()

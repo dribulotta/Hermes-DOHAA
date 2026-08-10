@@ -7,15 +7,68 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from hermes_dohaa.assurance.gates import (
+    ActionPolicyGate,
+    ClaimEvidenceGate,
+    RequiredEvidenceGate,
+)
 from hermes_dohaa.cli import main
+from hermes_dohaa.contracts.models import TaskContract
+from hermes_dohaa.controller.engine import DohaaController
 from hermes_dohaa.evidence.ledger import EvidenceLedger
-from hermes_dohaa.runtime.base import Proposal
+from hermes_dohaa.runtime.base import Claim, EvidenceItem, Proposal
 
 
 def exact_smoke_proposal(runtime, contract, feedback):
     del feedback
     exact_smoke_proposal.runtime = runtime
     return Proposal(result=dict(contract.inputs["expected_result"]))
+
+
+def approval_contract():
+    return {
+        "schema_version": "1.0",
+        "contract_id": "approval-resume-test",
+        "objective": "Produce a result that requires explicit approval",
+        "acceptance_criteria": [
+            {
+                "criterion_id": "grounded",
+                "description": "The result is grounded",
+                "required_evidence": ["source-1"],
+            }
+        ],
+        "allowed_actions": ["artifact.read"],
+        "forbidden_actions": ["external.publish"],
+        "risk_level": "critical",
+        "max_attempts": 2,
+        "requires_human_approval": True,
+    }
+
+
+def approval_proposal():
+    evidence = EvidenceItem.create(
+        "source-1",
+        "artifact",
+        "fixture",
+        {"ok": True},
+    )
+    return Proposal(
+        result={"summary": "verified"},
+        claims=(Claim("The fixture says ok", ("source-1",)),),
+        evidence=(evidence,),
+        requested_actions=("artifact.read",),
+    )
+
+
+class OneProposalRuntime:
+    def __init__(self, proposal):
+        self.proposal = proposal
+        self.calls = 0
+
+    def propose(self, contract, feedback):
+        del contract, feedback
+        self.calls += 1
+        return self.proposal
 
 
 class CliTests(unittest.TestCase):
@@ -195,6 +248,120 @@ class CliTests(unittest.TestCase):
         self.assertFalse(payload["selection_found"])
         self.assertEqual(payload["selected_event_count"], 0)
         self.assertEqual(payload["error_type"], "RunNotFound")
+
+    def test_run_command_resumes_approval_checkpoint_without_runtime_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contract_path = root / "contract.json"
+            ledger_path = root / "evidence.sqlite3"
+            contract_path.write_text(
+                json.dumps(approval_contract()),
+                encoding="utf-8",
+            )
+            contract = TaskContract.from_json_file(contract_path)
+            runtime = OneProposalRuntime(approval_proposal())
+            gates = (
+                ActionPolicyGate(),
+                ClaimEvidenceGate(),
+                RequiredEvidenceGate(),
+            )
+            with EvidenceLedger(ledger_path) as ledger:
+                pending = DohaaController(runtime, gates, ledger).run(contract)
+
+            output = io.StringIO()
+            with patch(
+                "hermes_dohaa.runtime.hermes_api.HermesApiRuntime.propose",
+                autospec=True,
+                side_effect=AssertionError("runtime must not be called"),
+            ), redirect_stdout(output):
+                exit_code = main(
+                    [
+                        "run",
+                        str(contract_path),
+                        "--ledger",
+                        str(ledger_path),
+                        "--resume-run-id",
+                        pending.run_id,
+                        "--human-approved",
+                    ]
+                )
+
+            with EvidenceLedger(ledger_path, create=False) as ledger:
+                events = [
+                    record.event_type
+                    for record in ledger.records(pending.run_id)
+                ]
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "succeeded")
+        self.assertEqual(payload["reason_code"], "run.succeeded")
+        self.assertEqual(payload["run_id"], pending.run_id)
+        self.assertEqual(runtime.calls, 1)
+        self.assertEqual(events.count("run.resumed"), 1)
+        self.assertEqual(events.count("run.finished"), 2)
+
+    def test_run_command_resume_errors_are_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contract_path = root / "contract.json"
+            missing_ledger = root / "missing.sqlite3"
+            contract_path.write_text(
+                json.dumps(approval_contract()),
+                encoding="utf-8",
+            )
+
+            missing_output = io.StringIO()
+            with redirect_stdout(missing_output):
+                missing_exit = main(
+                    [
+                        "run",
+                        str(contract_path),
+                        "--ledger",
+                        str(missing_ledger),
+                        "--resume-run-id",
+                        "missing-run",
+                        "--human-approved",
+                    ]
+                )
+
+            ledger_path = root / "evidence.sqlite3"
+            contract = TaskContract.from_json_file(contract_path)
+            gates = (
+                ActionPolicyGate(),
+                ClaimEvidenceGate(),
+                RequiredEvidenceGate(),
+            )
+            with EvidenceLedger(ledger_path) as ledger:
+                pending = DohaaController(
+                    OneProposalRuntime(approval_proposal()),
+                    gates,
+                    ledger,
+                ).run(contract)
+
+            approval_output = io.StringIO()
+            with redirect_stdout(approval_output):
+                approval_exit = main(
+                    [
+                        "run",
+                        str(contract_path),
+                        "--ledger",
+                        str(ledger_path),
+                        "--resume-run-id",
+                        pending.run_id,
+                    ]
+                )
+
+        missing_payload = json.loads(missing_output.getvalue())
+        approval_payload = json.loads(approval_output.getvalue())
+        self.assertEqual(missing_exit, 2)
+        self.assertEqual(missing_payload["reason_code"], "resume.not_found")
+        self.assertFalse(missing_ledger.exists())
+        self.assertEqual(approval_exit, 2)
+        self.assertEqual(
+            approval_payload["reason_code"],
+            "resume.approval_missing",
+        )
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
@@ -30,6 +30,21 @@ class GateResult:
     failure_code: str | None = None
 
     def __post_init__(self) -> None:
+        for field_name in ("gate", "reason"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"gate result {field_name} must be a non-empty string"
+                )
+        if not isinstance(self.passed, bool):
+            raise ValueError("gate result passed must be a boolean")
+        if any(
+            not isinstance(item, str) or not item.strip()
+            for item in self.evidence_ids
+        ):
+            raise ValueError(
+                "gate result evidence_ids must contain non-empty strings"
+            )
         if self.passed and self.failure_code is not None:
             raise ValueError(
                 "passing gate results cannot have a failure code"
@@ -42,6 +57,40 @@ class GateResult:
                 raise ValueError(
                     "failing gate results require a failure code"
                 )
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "GateResult":
+        allowed = {
+            "gate",
+            "passed",
+            "reason",
+            "evidence_ids",
+            "failure_code",
+        }
+        unknown = set(raw) - allowed
+        if unknown:
+            raise ValueError(
+                f"unknown gate result fields: {sorted(unknown)}"
+            )
+        evidence_ids = raw.get("evidence_ids", [])
+        if not isinstance(evidence_ids, list):
+            raise ValueError("gate result evidence_ids must be a list")
+        return cls(
+            gate=raw.get("gate"),
+            passed=raw.get("passed"),
+            reason=raw.get("reason"),
+            evidence_ids=tuple(evidence_ids),
+            failure_code=raw.get("failure_code"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "gate": self.gate,
+            "passed": self.passed,
+            "reason": self.reason,
+            "evidence_ids": list(self.evidence_ids),
+            "failure_code": self.failure_code,
+        }
 
     def to_feedback(self) -> VerifierFeedback:
         if self.passed or self.failure_code is None:

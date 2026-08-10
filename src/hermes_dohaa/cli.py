@@ -17,7 +17,11 @@ from hermes_dohaa.assurance.gates import (
     ResultEqualsGate,
 )
 from hermes_dohaa.contracts.models import ContractError, TaskContract
-from hermes_dohaa.controller.engine import DohaaController
+from hermes_dohaa.controller.engine import (
+    DohaaController,
+    RunResumeError,
+    RunResumeErrorCode,
+)
 from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
 from hermes_dohaa.runtime.hermes_api import HermesApiRuntime
 
@@ -61,6 +65,13 @@ def build_parser() -> argparse.ArgumentParser:
     _add_runtime_arguments(run, default_reasoning_effort=None)
     run.add_argument("--ledger", type=Path, default=Path(".dohaa/evidence.sqlite3"))
     run.add_argument("--human-approved", action="store_true")
+    run.add_argument(
+        "--resume-run-id",
+        help=(
+            "Resume an approval.required checkpoint in the existing ledger; "
+            "requires --human-approved"
+        ),
+    )
 
     smoke = subparsers.add_parser(
         "smoke", help="Run a non-mutating live integration test against Hermes"
@@ -99,11 +110,63 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     runtime = _runtime_from_args(args)
     gates = (ActionPolicyGate(), ClaimEvidenceGate(), RequiredEvidenceGate())
-    with EvidenceLedger(args.ledger) as ledger:
-        result = DohaaController(runtime, gates, ledger).run(
-            contract, human_approved=args.human_approved
-        )
-        ledger.verify_chain()
+    if args.resume_run_id is None:
+        with EvidenceLedger(args.ledger) as ledger:
+            result = DohaaController(runtime, gates, ledger).run(
+                contract,
+                human_approved=args.human_approved,
+            )
+            ledger.verify_chain()
+        payload = asdict(result)
+        payload["status"] = result.status.value
+        print(json.dumps(payload, ensure_ascii=False, default=str))
+        return 0 if result.status.value == "succeeded" else 1
+
+    try:
+        with EvidenceLedger(args.ledger, create=False) as ledger:
+            controller = DohaaController(runtime, gates, ledger)
+            result = controller.resume(
+                contract,
+                args.resume_run_id,
+                human_approved=args.human_approved,
+            )
+            ledger.verify_chain()
+    except RunResumeError as exc:
+        payload = {
+            "status": "failed",
+            "run_id": args.resume_run_id,
+            "reason_code": exc.code.value,
+            "reason": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+    except LedgerIntegrityError as exc:
+        payload = {
+            "status": "failed",
+            "run_id": args.resume_run_id,
+            "reason_code": RunResumeErrorCode.CHECKPOINT_INVALID.value,
+            "reason": f"evidence ledger integrity check failed: {exc}",
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+    except FileNotFoundError as exc:
+        payload = {
+            "status": "failed",
+            "run_id": args.resume_run_id,
+            "reason_code": RunResumeErrorCode.NOT_FOUND.value,
+            "reason": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+    except (OSError, sqlite3.DatabaseError, ValueError) as exc:
+        payload = {
+            "status": "failed",
+            "run_id": args.resume_run_id,
+            "reason_code": RunResumeErrorCode.CHECKPOINT_INVALID.value,
+            "reason": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
     payload = asdict(result)
     payload["status"] = result.status.value
     print(json.dumps(payload, ensure_ascii=False, default=str))

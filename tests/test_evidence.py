@@ -80,6 +80,36 @@ class EvidenceLedgerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "quiescent ledger"):
                 EvidenceLedger(path, read_only=True)
 
+    def test_write_mode_can_require_an_existing_ledger(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ledger.sqlite3"
+
+            with self.assertRaises(FileNotFoundError):
+                EvidenceLedger(path, create=False)
+            self.assertFalse(path.exists())
+
+            with EvidenceLedger(path) as ledger:
+                ledger.append("run-a", "one", {"value": 1})
+            with EvidenceLedger(path, create=False) as ledger:
+                ledger.append("run-a", "two", {"value": 2})
+                self.assertTrue(ledger.verify_chain())
+                self.assertEqual(ledger.record_count("run-a"), 2)
+
+    def test_write_transaction_commits_or_rolls_back_as_one_unit(self):
+        with EvidenceLedger() as ledger:
+            with ledger.transaction():
+                ledger.append("run-a", "one", {"value": 1})
+                ledger.append("run-a", "two", {"value": 2})
+            self.assertEqual(ledger.record_count(), 2)
+
+            with self.assertRaisesRegex(RuntimeError, "abort"):
+                with ledger.transaction():
+                    ledger.append("run-a", "three", {"value": 3})
+                    raise RuntimeError("abort")
+
+            self.assertEqual(ledger.record_count(), 2)
+            self.assertTrue(ledger.verify_chain())
+
 
 if __name__ == "__main__":
     unittest.main()

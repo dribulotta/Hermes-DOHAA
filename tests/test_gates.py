@@ -187,5 +187,20 @@ class GateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             passing.to_feedback()
 
+    def test_gate_result_checkpoint_serialization_round_trips(self):
+        result = GateResult(
+            "fixture",
+            False,
+            "Fixture failed",
+            ("source-1",),
+            failure_code=GateFailureCode.EVIDENCE_REQUIRED_MISSING,
+        )
+
+        restored = GateResult.from_dict(result.to_dict())
+
+        self.assertEqual(restored, result)
+        with self.assertRaisesRegex(ValueError, "unknown gate result"):
+            GateResult.from_dict({**result.to_dict(), "unexpected": True})
+
 if __name__ == "__main__":
     unittest.main()

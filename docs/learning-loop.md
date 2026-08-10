@@ -69,6 +69,57 @@ Terminal controller outcomes also expose a stable `reason_code`:
 The human-readable terminal `reason` remains descriptive. Automation should
 branch on `reason_code`, never on the wording of `reason`.
 
+## Resumable approval checkpoints
+
+When every deterministic gate passes but the contract still requires human
+approval, the controller records a versioned `run.checkpointed` event before
+terminating with `approval.required`. The checkpoint and terminal event commit
+as one SQLite transaction. The checkpoint contains:
+
+- the original `run_id` and attempt number;
+- the SHA-256 digest of the canonical task contract;
+- the complete proposal and its fingerprint;
+- the passing deterministic gate results;
+- the terminal reason code that made the run eligible for resumption.
+
+After an authorized operator approves the transition, resume the run against
+the same ledger and exact task contract:
+
+    hermes-dohaa run /path/to/task-contract.json \
+      --ledger /path/to/evidence.sqlite3 \
+      --resume-run-id RUN_ID \
+      --human-approved
+
+Before appending anything, the controller verifies the complete ledger hash
+chain, the checkpoint schema, the proposal fingerprint, the terminal event,
+the contract digest, and the configured gate names and order. A valid resume
+preserves the original `run_id`, records `run.resumed`, and appends a new
+`run.finished` event with `run.succeeded`. It does not contact Hermes or rerun
+gates because it consumes the immutable proposal and deterministic verdicts
+already bound into the verified checkpoint. The eligibility check and both
+appended events execute in one immediate SQLite transaction so concurrent
+resume attempts cannot both succeed.
+
+The initial resume surface is deliberately narrow. Only the latest
+`approval.required` terminal state is eligible. Runtime failures, exhausted
+attempt budgets, repeated proposals, successful runs, missing checkpoints,
+and a second resume all fail closed.
+
+Resume failures expose stable codes:
+
+| Code | Meaning |
+|---|---|
+| `resume.not_found` | The ledger or requested run does not exist |
+| `resume.not_eligible` | The latest terminal state cannot be resumed |
+| `resume.contract_mismatch` | The supplied contract differs from the checkpoint |
+| `resume.approval_missing` | Explicit approval was not supplied |
+| `resume.checkpoint_invalid` | The ledger or checkpoint failed validation |
+
+`--human-approved` is a control-plane assertion, not an identity provider or
+approval workflow. Operators must restrict command execution and ledger write
+access, and should record approver identity in an external authorization
+system until a signed approval record is implemented.
+
 ## Candidate lifecycle
 
 A future governed-learning subsystem should implement these states:
