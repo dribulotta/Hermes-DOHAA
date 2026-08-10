@@ -5,8 +5,11 @@ from hermes_dohaa.assurance.gates import (
     ClaimEvidenceGate,
     GateFailureCode,
     GateResult,
+    PolicyDecisionGate,
+    PolicyReasonCodeGate,
     RequiredEvidenceGate,
     ResultEqualsGate,
+    ResultSpecGate,
 )
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Claim, EvidenceItem, Proposal
@@ -66,6 +69,111 @@ class GateTests(unittest.TestCase):
             failure.failure_code,
             GateFailureCode.RESULT_MISMATCH,
         )
+
+    def test_contract_visible_policy_gates_produce_actionable_feedback(self):
+        contract = TaskContract.from_dict(
+            valid_contract(
+                inputs={
+                    "policy": {
+                        "approval_required_actions": ["external.publish"],
+                    },
+                    "hypothetical_request": {
+                        "action": "external.publish",
+                    },
+                    "result_spec": {
+                        "required_keys": ["decision", "reason_code"],
+                        "additional_keys": False,
+                        "types": {
+                            "decision": "string",
+                            "reason_code": "string",
+                        },
+                        "enums": {
+                            "decision": ["allow", "deny", "escalate"],
+                            "reason_code": [
+                                "action.allowed",
+                                "action.forbidden",
+                                "approval.required",
+                            ],
+                        },
+                    },
+                }
+            )
+        )
+        wrong = Proposal(
+            result={
+                "decision": "allow",
+                "reason_code": "allowed pending approval",
+            }
+        )
+
+        spec_result = ResultSpecGate().evaluate(contract, wrong)
+        decision_result = PolicyDecisionGate().evaluate(contract, wrong)
+        reason_result = PolicyReasonCodeGate().evaluate(contract, wrong)
+
+        self.assertEqual(
+            spec_result.failure_code,
+            GateFailureCode.RESULT_ENUM_INVALID,
+        )
+        self.assertEqual(
+            decision_result.failure_code,
+            GateFailureCode.POLICY_DECISION_MISMATCH,
+        )
+        self.assertIn("'escalate'", decision_result.reason)
+        self.assertEqual(
+            reason_result.failure_code,
+            GateFailureCode.POLICY_REASON_CODE_MISMATCH,
+        )
+        self.assertIn("'approval.required'", reason_result.reason)
+
+        correct = Proposal(
+            result={
+                "decision": "escalate",
+                "reason_code": "approval.required",
+            }
+        )
+        self.assertTrue(ResultSpecGate().evaluate(contract, correct).passed)
+        self.assertTrue(PolicyDecisionGate().evaluate(contract, correct).passed)
+        self.assertTrue(PolicyReasonCodeGate().evaluate(contract, correct).passed)
+
+    def test_result_spec_failure_codes_are_stable(self):
+        base_inputs = {
+            "result_spec": {
+                "required_keys": ["decision"],
+                "additional_keys": False,
+                "types": {"decision": "string"},
+                "enums": {"decision": ["allow", "deny"]},
+            }
+        }
+        contract = TaskContract.from_dict(valid_contract(inputs=base_inputs))
+        gate = ResultSpecGate()
+
+        cases = (
+            (
+                TaskContract.from_dict(valid_contract(inputs={"result_spec": {}})),
+                Proposal(result={}),
+                GateFailureCode.RESULT_SPEC_INVALID,
+            ),
+            (
+                contract,
+                Proposal(result={}),
+                GateFailureCode.RESULT_KEYS_MISMATCH,
+            ),
+            (
+                contract,
+                Proposal(result={"decision": 1}),
+                GateFailureCode.RESULT_TYPE_MISMATCH,
+            ),
+            (
+                contract,
+                Proposal(result={"decision": "escalate"}),
+                GateFailureCode.RESULT_ENUM_INVALID,
+            ),
+        )
+        for case_contract, proposal, code in cases:
+            with self.subTest(code=code):
+                result = gate.evaluate(case_contract, proposal)
+                self.assertFalse(result.passed)
+                self.assertEqual(result.failure_code, code)
 
 
     def test_all_builtin_failure_codes_are_stable(self):

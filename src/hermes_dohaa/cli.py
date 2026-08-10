@@ -93,10 +93,14 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("suite", type=Path)
     evaluate.add_argument("--output", type=Path, required=True)
     evaluate.add_argument("--seed", type=int, default=0)
+    evaluate.add_argument("--repetitions", type=int, default=1)
     evaluate.add_argument(
         "--model-artifact-id",
         help="Pinned model artifact identifier recorded with the evaluation",
     )
+    evaluate.add_argument("--temperature", type=float, default=0.0)
+    evaluate.add_argument("--top-p", type=float, default=1.0)
+    evaluate.add_argument("--sampling-seed", type=int, default=0)
     _add_runtime_arguments(evaluate, default_reasoning_effort="none")
 
     verify_ledger = subparsers.add_parser(
@@ -199,7 +203,7 @@ def _run_evaluate(args: argparse.Namespace) -> int:
     try:
         suite = EvaluationSuite.from_json_file(args.suite)
 
-        def runtime_factory(contract, session_id):
+        def runtime_factory(contract, session_id, trial_sampling_seed):
             del contract
             return HermesApiRuntime(
                 base_url=args.hermes_url,
@@ -207,12 +211,17 @@ def _run_evaluate(args: argparse.Namespace) -> int:
                 timeout_seconds=args.hermes_timeout_seconds,
                 session_id=session_id,
                 reasoning_effort=args.reasoning_effort,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                sampling_seed=trial_sampling_seed,
             )
 
         result = run_comparative_evaluation(
             suite,
             runtime_factory,
             seed=args.seed,
+            repetitions=args.repetitions,
+            sampling_seed=args.sampling_seed,
             runtime_policy={
                 "adapter": "hermes_api",
                 "hermes_dohaa_version": __version__,
@@ -220,6 +229,9 @@ def _run_evaluate(args: argparse.Namespace) -> int:
                 "model_alias": args.hermes_model,
                 "model_artifact_id": args.model_artifact_id,
                 "reasoning_effort": args.reasoning_effort,
+                "temperature": args.temperature,
+                "top_p": args.top_p,
+                "sampling_seed": args.sampling_seed,
                 "timeout_seconds": args.hermes_timeout_seconds,
             },
         )
@@ -239,6 +251,7 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         "suite_id": result["suite_id"],
         "suite_sha256": result["suite_sha256"],
         "seed": result["seed"],
+        "repetitions": result["repetitions"],
         "runtime_policy": result["runtime_policy"],
         "output": str(args.output),
         "summary": result["summary"],

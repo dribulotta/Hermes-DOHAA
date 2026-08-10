@@ -110,7 +110,8 @@ Run the public development evaluation example:
       --output .dohaa/evaluation.json
 
 See [Comparative quality evaluation](docs/evaluation.md) for the experimental
-controls, private-pilot protocol, metrics, and interpretation limits.
+controls, contract-visible result specifications, repeated trials, sampling
+policy, private-pilot protocol, metrics, and interpretation limits.
 
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 

@@ -3,6 +3,53 @@
   "$id": "https://github.com/dribulotta/Hermes-DOHAA/schemas/evaluation-suite.schema.json",
   "title": "Hermes-DOHAA comparative evaluation suite",
   "type": "object",
+  "$defs": {
+    "resultSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_keys",
+        "additional_keys",
+        "types",
+        "enums"
+      ],
+      "properties": {
+        "required_keys": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additional_keys": {
+          "type": "boolean"
+        },
+        "types": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "array",
+              "boolean",
+              "integer",
+              "null",
+              "number",
+              "object",
+              "string"
+            ]
+          }
+        },
+        "enums": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      }
+    }
+  },
   "additionalProperties": false,
   "required": [
     "schema_version",
@@ -44,10 +91,66 @@
             "minLength": 1
           },
           "contract": {
-            "$ref": "task-contract.schema.json"
+            "allOf": [
+              {
+                "$ref": "task-contract.schema.json"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "inputs"
+                ],
+                "properties": {
+                  "inputs": {
+                    "type": "object",
+                    "required": [
+                      "result_spec"
+                    ],
+                    "properties": {
+                      "result_spec": {
+                        "$ref": "#/$defs/resultSpec"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
           },
           "expected_result": true
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "domain": {
+                  "const": "policy_decision"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "contract": {
+                  "properties": {
+                    "inputs": {
+                      "required": [
+                        "policy",
+                        "hypothetical_request"
+                      ],
+                      "properties": {
+                        "policy": {
+                          "type": "object"
+                        },
+                        "hypothetical_request": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }
