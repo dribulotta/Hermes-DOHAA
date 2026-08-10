@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from hermes_dohaa.contracts.models import ContractError, TaskContract
+from hermes_dohaa.assurance.result_spec import parse_result_spec
 
 
 class EvaluationSuiteError(ValueError):
@@ -52,6 +53,10 @@ class EvaluationCase:
             raise EvaluationSuiteError(
                 "evaluation contracts must declare inputs.result_spec"
             )
+        try:
+            parse_result_spec(contract.inputs["result_spec"])
+        except ValueError as exc:
+            raise EvaluationSuiteError(f"invalid result_spec: {exc}") from exc
         domain = _required_text(raw, "domain")
         if domain == "policy_decision" and (
             not isinstance(contract.inputs.get("policy"), dict)

@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Mapping, Protocol
 
+import json
+
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
+from hermes_dohaa.assurance.result_spec import json_equal, parse_result_spec, validate_result
 
 
 class GateFailureCode(StrEnum):
@@ -35,6 +38,7 @@ class GateResult:
     reason: str
     evidence_ids: tuple[str, ...] = ()
     failure_code: str | None = None
+    details: Any | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("gate", "reason"):
@@ -64,6 +68,7 @@ class GateResult:
                 raise ValueError(
                     "failing gate results require a failure code"
                 )
+        object.__setattr__(self, "details", _json_clone(self.details))
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "GateResult":
@@ -73,6 +78,7 @@ class GateResult:
             "reason",
             "evidence_ids",
             "failure_code",
+            "details",
         }
         unknown = set(raw) - allowed
         if unknown:
@@ -88,16 +94,20 @@ class GateResult:
             reason=raw.get("reason"),
             evidence_ids=tuple(evidence_ids),
             failure_code=raw.get("failure_code"),
+            details=raw.get("details"),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "gate": self.gate,
             "passed": self.passed,
             "reason": self.reason,
             "evidence_ids": list(self.evidence_ids),
             "failure_code": self.failure_code,
         }
+        if self.details is not None:
+            result["details"] = _json_clone(self.details)
+        return result
 
     def to_feedback(self) -> VerifierFeedback:
         if self.passed or self.failure_code is None:
@@ -109,6 +119,7 @@ class GateResult:
             code=self.failure_code,
             reason=self.reason,
             evidence_ids=self.evidence_ids,
+            details=self.details,
         )
 
 
@@ -232,7 +243,7 @@ class ResultEqualsGate:
 
     def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
         del contract
-        if proposal.result != self.expected:
+        if not json_equal(proposal.result, self.expected):
             return GateResult(
                 self.name,
                 False,
@@ -251,7 +262,7 @@ class ResultSpecGate:
     def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
         spec = contract.inputs.get("result_spec")
         try:
-            required_keys, allow_additional, types, enums = _parse_result_spec(spec)
+            parsed = parse_result_spec(spec)
         except ValueError as exc:
             return GateResult(
                 self.name,
@@ -260,59 +271,13 @@ class ResultSpecGate:
                 failure_code=GateFailureCode.RESULT_SPEC_INVALID,
             )
 
-        if not isinstance(proposal.result, Mapping):
+        details = validate_result(proposal.result, parsed)
+        if details:
+            first = details["violations"][0]
             return GateResult(
-                self.name,
-                False,
-                "Proposal result must be a JSON object",
-                failure_code=GateFailureCode.RESULT_TYPE_MISMATCH,
+                self.name, False, "Proposal result does not conform to result_spec",
+                failure_code=first["code"], details=details,
             )
-
-        actual_keys = set(proposal.result)
-        missing = sorted(set(required_keys) - actual_keys)
-        unexpected = (
-            sorted(actual_keys - set(required_keys))
-            if not allow_additional
-            else []
-        )
-        if missing or unexpected:
-            return GateResult(
-                self.name,
-                False,
-                (
-                    "Proposal result keys do not match result_spec; "
-                    f"missing={missing}, unexpected={unexpected}"
-                ),
-                failure_code=GateFailureCode.RESULT_KEYS_MISMATCH,
-            )
-
-        for field_name, expected_type in types.items():
-            if field_name not in proposal.result:
-                continue
-            if not _matches_json_type(proposal.result[field_name], expected_type):
-                return GateResult(
-                    self.name,
-                    False,
-                    (
-                        f"Result field {field_name!r} must have JSON type "
-                        f"{expected_type!r}"
-                    ),
-                    failure_code=GateFailureCode.RESULT_TYPE_MISMATCH,
-                )
-
-        for field_name, allowed_values in enums.items():
-            if field_name not in proposal.result:
-                continue
-            if proposal.result[field_name] not in allowed_values:
-                return GateResult(
-                    self.name,
-                    False,
-                    (
-                        f"Result field {field_name!r} must be one of the "
-                        f"declared values: {list(allowed_values)!r}"
-                    ),
-                    failure_code=GateFailureCode.RESULT_ENUM_INVALID,
-                )
 
         return GateResult(
             self.name,
@@ -464,6 +429,15 @@ def _matches_json_type(value: Any, expected_type: str) -> bool:
     if expected_type == "object":
         return isinstance(value, Mapping)
     return False
+
+
+def _json_clone(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        return json.loads(json.dumps(value, allow_nan=False))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"details must be JSON-serializable: {exc}") from exc
 
 
 def _policy_expectation(contract: TaskContract) -> tuple[str, str, str]:

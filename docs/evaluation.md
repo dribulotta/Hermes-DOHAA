@@ -184,3 +184,26 @@ to other tasks. Formal validation needs larger protected sets, independent
 replication, blind human grading for open-ended quality, and comparison against
 additional baselines. The JSON result is not signed or hash-chained; archive it
 with trusted external hashes.
+
+## Recursive result contracts and repair diagnostics
+
+The legacy flat `result_spec` remains supported. A recursive contract uses
+`spec_version: "2.0"` and JSON-shaped `object`, `array`, and scalar nodes. Object
+nodes declare `properties`, `required`, and `additional_properties`; array nodes
+declare `items`. Recursive diagnostics (including escaped JSON Pointer paths)
+are derived exclusively from this visible contract. They are bounded to 100
+reported violations and never contain `expected_result` or a difference against
+it.
+
+The evaluator separately computes an aggregate structural `oracle_distance`
+after each response. This private scoring metric records only mismatch kinds and
+counts; oracle data is never placed in verifier feedback or sent to the runtime.
+`repair_transition` distinguishes complete repairs, partial improvements,
+unchanged failures, and `worsened_failure`—the latter covers deterioration that
+the compatibility boolean `regressed` cannot detect because both responses
+failed. Per-domain statistics are explicitly exploratory: samples are small and
+no multiple-comparison correction is applied.
+
+Running a previously protected holdout with changed evaluator code is a
+development/regression test, not a new independent confirmation. A new
+confirmation requires a newly protected, independently frozen suite.

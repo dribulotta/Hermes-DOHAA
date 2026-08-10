@@ -41,15 +41,50 @@ def analyze_unique_cases(case_results: list[dict[str, Any]]) -> dict[str, Any]:
         name: _paired_statistics(rates[left], rates[right])
         for name, left, right in _COMPARISONS
     }
+    domains: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for trial in case_results:
+        domains[str(trial["domain"])].append(trial)
+    domain_statistics = {
+        domain: _analyze_group(trials)
+        for domain, trials in sorted(domains.items())
+    }
     return {
         "unit_of_analysis": "unique_case",
         "unique_cases": len(grouped),
         "condition_statistics": condition_stats,
         "paired_sign_tests": paired,
+        "domain_statistics": domain_statistics,
+        "domain_statistics_note": (
+            "Exploratory only: domain samples are small and no correction for "
+            "multiple comparisons is applied. Runtime failures count as failures."
+        ),
         "interpretation": (
             "Repetitions are nested within each case. Exact sign tests count "
             "unique cases, not repeated trials, as independent units."
         ),
+    }
+
+
+def _analyze_group(trials: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for trial in trials:
+        grouped[str(trial["case_id"])].append(trial)
+    rates = {condition: {} for condition in _CONDITIONS}
+    for case_id, repetitions in grouped.items():
+        for condition in _CONDITIONS:
+            rates[condition][case_id] = sum(
+                _outcome_passed(item["conditions"][condition]) for item in repetitions
+            ) / len(repetitions)
+    return {
+        "exploratory": True,
+        "unique_cases": len(grouped),
+        "condition_statistics": {
+            condition: _condition_statistics(values) for condition, values in rates.items()
+        },
+        "paired_comparisons": {
+            name: _paired_statistics(rates[left], rates[right])
+            for name, left, right in _COMPARISONS
+        },
     }
 
 

@@ -31,6 +31,7 @@ from hermes_dohaa.evaluation.models import EvaluationCase, EvaluationSuite
 from hermes_dohaa.evaluation.statistics import analyze_unique_cases
 from hermes_dohaa.evidence.ledger import EvidenceLedger
 from hermes_dohaa.runtime.base import AgentRuntime, Proposal, VerifierFeedback
+from hermes_dohaa.assurance.result_spec import json_equal, json_type
 
 
 class EvaluationCondition(StrEnum):
@@ -360,6 +361,7 @@ def _completed_outcome(
             initial_score["all_gates_passed"]
             and not final_score["all_gates_passed"]
         ),
+        "repair_transition": _repair_transition(initial_score, final_score),
     }
 
 
@@ -407,6 +409,7 @@ def _runtime_failure_details(
         "final_score": None,
         "improved": False,
         "regressed": False,
+        "repair_transition": "runtime_failed",
         "error_type": error_type,
         "error": error,
     }
@@ -429,6 +432,7 @@ def _score(
         "all_gates_passed": all(result.passed for result in results),
         "gate_results": [result.to_dict() for result in results],
         "dimensions": _score_dimensions(results),
+        "oracle_distance": structural_distance(proposal.result, case.expected_result),
     }
 
 
@@ -503,6 +507,14 @@ def _summarize(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             ),
             "improved": sum(bool(item["improved"]) for item in completed),
             "regressed": sum(bool(item["regressed"]) for item in completed),
+            "repair_transitions": {
+                transition: sum(item["repair_transition"] == transition for item in outcomes)
+                for transition in (
+                    "passed_unchanged", "repaired", "partial_improvement",
+                    "unchanged_failure", "worsened_failure", "regressed", "runtime_failed"
+                )
+                if any(item["repair_transition"] == transition for item in outcomes)
+            },
             "average_runtime_calls": _average(
                 [item["runtime_calls"] for item in outcomes]
             ),
@@ -655,3 +667,52 @@ def _json_clone(value: Any) -> Any:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def structural_distance(actual: Any, expected: Any) -> dict[str, Any]:
+    """Return private aggregate mismatch counts without oracle values."""
+    counts: dict[str, int] = {}
+
+    def add(kind: str) -> None:
+        counts[kind] = counts.get(kind, 0) + 1
+
+    def compare(left: Any, right: Any) -> None:
+        left_type, right_type = json_type(left), json_type(right)
+        if left_type is None or right_type is None or left_type != right_type:
+            add("type_mismatch")
+        elif left_type == "object":
+            for key in sorted(set(right) - set(left)):
+                add("missing_key")
+            for key in sorted(set(left) - set(right)):
+                add("unexpected_key")
+            for key in sorted(set(left) & set(right)):
+                compare(left[key], right[key])
+        elif left_type == "array":
+            for left_item, right_item in zip(left, right):
+                compare(left_item, right_item)
+            for _ in range(max(0, len(right) - len(left))):
+                add("missing_element")
+            for _ in range(max(0, len(left) - len(right))):
+                add("unexpected_element")
+        elif not json_equal(left, right):
+            add("value_mismatch")
+
+    compare(actual, expected)
+    return {"mismatch_count": sum(counts.values()), "kind_counts": dict(sorted(counts.items()))}
+
+
+def _repair_transition(initial: dict[str, Any], final: dict[str, Any]) -> str:
+    before, after = initial["all_gates_passed"], final["all_gates_passed"]
+    if before and after:
+        return "passed_unchanged"
+    if not before and after:
+        return "repaired"
+    if before and not after:
+        return "regressed"
+    initial_distance = initial["oracle_distance"]["mismatch_count"]
+    final_distance = final["oracle_distance"]["mismatch_count"]
+    if final_distance < initial_distance:
+        return "partial_improvement"
+    if final_distance > initial_distance:
+        return "worsened_failure"
+    return "unchanged_failure"
