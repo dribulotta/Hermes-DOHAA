@@ -39,6 +39,7 @@ The `v0.1` bootstrap implements:
 - a tamper-evident SQLite event ledger;
 - retry, no-progress termination, and human escalation;
 - structured verifier feedback and stable terminal reason codes;
+- fail-closed approval checkpoints that preserve the original run identity;
 - a standard-library-only runtime with unit and integration tests.
 
 ```mermaid
@@ -77,6 +78,20 @@ hermes-dohaa run examples/task_contract.json \
   --hermes-url http://127.0.0.1:8642 \
   --ledger .dohaa/evidence.sqlite3
 ```
+
+Resume a run that stopped at `approval.required` after an authorized operator
+has approved it:
+
+```bash
+hermes-dohaa run examples/task_contract.json \
+  --ledger .dohaa/evidence.sqlite3 \
+  --resume-run-id RUN_ID \
+  --human-approved
+```
+
+The resume path verifies the complete ledger chain and the exact contract hash,
+then reuses the checkpointed proposal and gate verdicts without contacting
+Hermes. Other terminal outcomes are not resumable.
 
 Verify an archived evidence ledger without contacting Hermes:
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,9 +39,12 @@ class EvidenceLedger:
         path: str | Path = ":memory:",
         *,
         read_only: bool = False,
+        create: bool = True,
     ) -> None:
         self.path = str(path)
         self.read_only = read_only
+        self.create = create
+        self._in_transaction = False
 
         if read_only:
             if self.path == ":memory:":
@@ -67,15 +71,23 @@ class EvidenceLedger:
 
             uri = f"{resolved.as_uri()}?mode=ro&immutable=1"
             self._connection = sqlite3.connect(uri, uri=True)
-        else:
+        elif create:
             if self.path != ":memory:":
                 Path(self.path).parent.mkdir(parents=True, exist_ok=True)
             self._connection = sqlite3.connect(self.path)
+        else:
+            if self.path == ":memory:":
+                raise ValueError("create=False requires a filesystem path")
+            resolved = Path(self.path).expanduser().resolve()
+            if not resolved.is_file():
+                raise FileNotFoundError(f"Ledger does not exist: {resolved}")
+            uri = f"{resolved.as_uri()}?mode=rw"
+            self._connection = sqlite3.connect(uri, uri=True)
 
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA foreign_keys = ON")
 
-        if not read_only:
+        if not read_only and create:
             self._connection.execute("PRAGMA journal_mode = WAL")
             self._connection.execute(
                 """
@@ -91,6 +103,12 @@ class EvidenceLedger:
                 """
             )
             self._connection.commit()
+        elif not read_only:
+            self._connection.execute(
+                "SELECT sequence, run_id, event_type, payload_json, "
+                "created_at, previous_hash, event_hash "
+                "FROM ledger_events LIMIT 0"
+            )
 
     def close(self) -> None:
         self._connection.close()
@@ -100,6 +118,26 @@ class EvidenceLedger:
 
     def __exit__(self, *_: object) -> None:
         self.close()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        if self.read_only:
+            raise LedgerReadOnlyError(
+                "Cannot start a write transaction on a read-only ledger"
+            )
+        if self._in_transaction:
+            raise RuntimeError("Nested ledger transactions are not supported")
+        self._connection.execute("BEGIN IMMEDIATE")
+        self._in_transaction = True
+        try:
+            yield
+        except BaseException:
+            self._connection.rollback()
+            raise
+        else:
+            self._connection.commit()
+        finally:
+            self._in_transaction = False
 
     def append(self, run_id: str, event_type: str, payload: Any) -> LedgerRecord:
         if self.read_only:
@@ -119,7 +157,8 @@ class EvidenceLedger:
             """,
             (run_id, event_type, payload_json, created_at, previous_hash, event_hash),
         )
-        self._connection.commit()
+        if not self._in_transaction:
+            self._connection.commit()
         return LedgerRecord(
             sequence=int(cursor.lastrowid),
             run_id=run_id,

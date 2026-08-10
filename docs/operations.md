@@ -123,6 +123,35 @@ A valid hash chain cannot independently detect replacement of the entire ledger
 or deletion of an unanchored chain tail. External backups or trusted anchors
 remain necessary for stronger guarantees.
 
+## Resuming an approved run
+
+A run is eligible for resumption only when its latest terminal event has
+`reason_code` set to `approval.required`. Before continuing it:
+
+1. stop concurrent controller writers for the ledger;
+2. preserve a quiescent backup or operationally safe SQLite snapshot;
+3. review the proposal, gate verdicts, contract, scope, and residual risk;
+4. obtain authorization through the deployment's approval process;
+5. use the original contract file and ledger path.
+
+Resume the exact run after approval:
+
+    hermes-dohaa run /path/to/task-contract.json \
+      --ledger /path/to/evidence.sqlite3 \
+      --resume-run-id RUN_ID \
+      --human-approved
+
+The command verifies the full ledger chain and checkpoint, rejects a changed
+contract, and does not contact the cognitive runtime. A successful response
+must preserve the original `run_id`, report `reason_code` as `run.succeeded`,
+and leave both `run.resumed` and the final `run.finished` events in the ledger.
+The eligibility check and final events commit atomically. Repeat attempts fail
+because a successful run is no longer eligible.
+
+The CLI flag asserts that approval already exists; it does not authenticate an
+approver. Restrict access to the controller service account and retain the
+external approval record alongside the evidence ledger.
+
 ## Evidence handling
 
 Evidence ledgers should be:
