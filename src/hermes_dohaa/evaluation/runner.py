@@ -28,6 +28,7 @@ from hermes_dohaa.assurance.gates import (
 from hermes_dohaa.controller.engine import DohaaController, RunReasonCode
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.evaluation.models import EvaluationCase, EvaluationSuite
+from hermes_dohaa.evaluation.statistics import analyze_unique_cases
 from hermes_dohaa.evidence.ledger import EvidenceLedger
 from hermes_dohaa.runtime.base import AgentRuntime, Proposal, VerifierFeedback
 
@@ -74,6 +75,7 @@ def run_comparative_evaluation(
     repetitions: int = 1,
     sampling_seed: int = 0,
     runtime_policy: Mapping[str, Any] | None = None,
+    suite_commitment: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("evaluation seed must be an integer")
@@ -86,6 +88,11 @@ def run_comparative_evaluation(
     if isinstance(sampling_seed, bool) or not isinstance(sampling_seed, int):
         raise ValueError("evaluation sampling_seed must be an integer")
     policy = _json_clone(dict(runtime_policy or {}))
+    commitment = (
+        _json_clone(dict(suite_commitment))
+        if suite_commitment is not None
+        else None
+    )
 
     evaluation_id = str(uuid4())
     started_at = _utc_now()
@@ -137,11 +144,20 @@ def run_comparative_evaluation(
         "repetitions": repetitions,
         "sampling_seed": sampling_seed,
         "runtime_policy": policy,
+        "suite_commitment": commitment,
+        "suite_commitment_sha256": (
+            hashlib.sha256(
+                _canonical_json(commitment).encode("utf-8")
+            ).hexdigest()
+            if commitment is not None
+            else None
+        ),
         "started_at": started_at,
         "completed_at": completed_at,
         "conditions": [item.value for item in EvaluationCondition],
         "cases": case_results,
         "summary": _summarize(case_results),
+        "statistical_analysis": analyze_unique_cases(case_results),
         "paired_comparisons": {
             "dohaa_vs_direct": _paired_comparison(
                 case_results,

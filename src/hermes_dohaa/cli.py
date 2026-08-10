@@ -27,8 +27,11 @@ from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
 from hermes_dohaa.evaluation import (
     EvaluationSuite,
     EvaluationSuiteError,
+    SuiteCommitment,
+    SuiteCommitmentError,
     run_comparative_evaluation,
     write_evaluation_result,
+    write_suite_commitment,
 )
 from hermes_dohaa.runtime.hermes_api import HermesApiRuntime
 
@@ -101,7 +104,20 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--temperature", type=float, default=0.0)
     evaluate.add_argument("--top-p", type=float, default=1.0)
     evaluate.add_argument("--sampling-seed", type=int, default=0)
+    evaluate.add_argument(
+        "--suite-commitment",
+        type=Path,
+        help="Verify a previously frozen protected-suite commitment",
+    )
     _add_runtime_arguments(evaluate, default_reasoning_effort="none")
+
+    freeze_suite = subparsers.add_parser(
+        "freeze-suite",
+        help="Freeze a private 30-50 case holdout before evaluating it",
+    )
+    freeze_suite.add_argument("suite", type=Path)
+    freeze_suite.add_argument("--output", type=Path, required=True)
+    freeze_suite.add_argument("--protocol-commit", required=True)
 
     verify_ledger = subparsers.add_parser(
         "verify-ledger",
@@ -123,6 +139,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_verify_ledger(args)
     if args.command == "evaluate":
         return _run_evaluate(args)
+    if args.command == "freeze-suite":
+        return _run_freeze_suite(args)
 
     try:
         contract = TaskContract.from_json_file(args.contract)
@@ -202,6 +220,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _run_evaluate(args: argparse.Namespace) -> int:
     try:
         suite = EvaluationSuite.from_json_file(args.suite)
+        commitment = None
+        if args.suite_commitment is not None:
+            commitment = SuiteCommitment.from_json_file(
+                args.suite_commitment
+            )
+            commitment.verify(suite)
 
         def runtime_factory(contract, session_id, trial_sampling_seed):
             del contract
@@ -234,9 +258,19 @@ def _run_evaluate(args: argparse.Namespace) -> int:
                 "sampling_seed": args.sampling_seed,
                 "timeout_seconds": args.hermes_timeout_seconds,
             },
+            suite_commitment=(
+                commitment.to_dict()
+                if commitment is not None
+                else None
+            ),
         )
         write_evaluation_result(args.output, result)
-    except (EvaluationSuiteError, OSError, ValueError) as exc:
+    except (
+        EvaluationSuiteError,
+        SuiteCommitmentError,
+        OSError,
+        ValueError,
+    ) as exc:
         payload = {
             "status": "failed",
             "error_type": type(exc).__name__,
@@ -253,8 +287,43 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         "seed": result["seed"],
         "repetitions": result["repetitions"],
         "runtime_policy": result["runtime_policy"],
+        "suite_commitment": result["suite_commitment"],
+        "suite_commitment_sha256": result["suite_commitment_sha256"],
         "output": str(args.output),
         "summary": result["summary"],
+        "statistical_analysis": result["statistical_analysis"],
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _run_freeze_suite(args: argparse.Namespace) -> int:
+    try:
+        suite = EvaluationSuite.from_json_file(args.suite)
+        commitment = SuiteCommitment.create(
+            suite,
+            protocol_commit=args.protocol_commit,
+        )
+        write_suite_commitment(args.output, commitment)
+    except (
+        EvaluationSuiteError,
+        SuiteCommitmentError,
+        OSError,
+        ValueError,
+    ) as exc:
+        payload = {
+            "status": "failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    payload = {
+        "status": "frozen",
+        "commitment": commitment.to_dict(),
+        "commitment_sha256": commitment.sha256(),
+        "output": str(args.output),
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0

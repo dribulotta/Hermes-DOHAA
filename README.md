@@ -41,7 +41,8 @@ The `v0.1` bootstrap implements:
 - structured verifier feedback and stable terminal reason codes;
 - fail-closed approval checkpoints that preserve the original run identity;
 - source-bound control-plane manifests for resumable approvals;
-- a paired quality-evaluation harness for direct, reflective, and DOHAA runs;
+- a paired quality-evaluation harness with protected-suite commitments and
+  unique-case statistical analysis;
 - a standard-library-only runtime with unit and integration tests.
 
 ```mermaid
@@ -111,7 +112,7 @@ Run the public development evaluation example:
 
 See [Comparative quality evaluation](docs/evaluation.md) for the experimental
 controls, contract-visible result specifications, repeated trials, sampling
-policy, private-pilot protocol, metrics, and interpretation limits.
+policy, protected-holdout protocol, metrics, and interpretation limits.
 
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 

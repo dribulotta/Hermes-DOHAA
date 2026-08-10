@@ -85,26 +85,81 @@ The result records:
 - API token usage when Hermes reports an OpenAI-compatible `usage` object;
 - DOHAA terminal state, attempt count, reason code, and ledger-chain verdict.
 
+The result also contains `statistical_analysis`. Repetitions are nested within
+their original case, so this section treats the unique case as the independent
+unit. It reports strict case-level pass rates with Wilson 95% intervals and
+paired exact two-sided sign tests. Trial counts remain useful operational
+metrics, but must not be presented as independent sample size.
+
 Runtime failures are outcomes, not silently discarded samples. A completed
 experiment may therefore contain failed conditions while the command itself
 returns successfully.
 
-## Initial private pilot
+## Freeze a protected pilot
 
-The first meaningful pilot should be created outside the public repository and
-frozen before execution:
+Create the first meaningful pilot outside the public repository. It must have
+30 to 50 unpublished cases, at least three domains, and at least five cases in
+every domain. Do not place the suite, manifest, or results in Git.
 
-1. prepare 10 unpublished evidence-synthesis cases;
-2. prepare 10 unpublished policy-decision cases;
+After the evaluation implementation is merged, record that merge commit and
+freeze the suite before viewing model outputs:
+
+    hermes-dohaa freeze-suite /protected/holdout.json \
+      --protocol-commit MERGED_IMPLEMENTATION_COMMIT \
+      --output /protected/holdout.commitment.json
+
+The command validates the suite, writes a private non-overwriting commitment,
+and records:
+
+- the exact suite SHA-256 digest;
+- case and per-domain counts;
+- the protocol implementation commit;
+- a commitment identifier and freeze timestamp.
+
+The timestamp is operator evidence, not a trusted timestamp. Publish or store
+the commitment digest in an independent append-only or access-controlled
+system before starting the evaluation if stronger proof of prior commitment is
+required.
+
+Run the pilot only with the matching commitment:
+
+    hermes-dohaa evaluate /protected/holdout.json \
+      --suite-commitment /protected/holdout.commitment.json \
+      --output /protected/holdout-result.json \
+      --hermes-url http://192.0.2.106:8642/v1 \
+      --hermes-model dohaa-runtime \
+      --model-artifact-id PINNED_MODEL_ARTIFACT \
+      --reasoning-effort none \
+      --temperature 0 \
+      --top-p 1 \
+      --sampling-seed 17 \
+      --seed 20260810 \
+      --repetitions 1
+
+The evaluator rejects a suite whose ID, digest, case count, or domain counts no
+longer match the frozen commitment.
+
+## Protected pilot procedure
+
+The operator should follow this sequence without tuning between steps:
+
+1. prepare 30 to 50 unique unpublished cases across at least three domains;
+2. keep expected results outside every runtime-visible task contract;
 3. use exactly two attempts in every contract;
-4. pin the model alias, model artifact, context, reasoning policy, timeout, and
+4. merge and freeze the evaluation implementation before authoring or scoring
+   the holdout;
+5. freeze and externally anchor the suite commitment before any model run;
+6. pin the model alias, model artifact, context, reasoning policy, timeout, and
    server configuration;
-5. choose and record order and sampling seeds before viewing outputs;
-6. choose the repetition count before viewing outputs;
-7. execute all 20 paired cases in one result artifact;
-8. preserve the suite, result, model identity, runtime version, and external
+7. choose and record order and sampling seeds before viewing outputs;
+8. choose the repetition count before viewing outputs;
+9. execute all paired cases in one result artifact;
+10. preserve the suite, commitment, result, model identity, runtime version,
+   and external
    SHA-256 hashes together;
-9. report every case, repetition, failure, and regression.
+11. report every case, repetition, failure, and regression;
+12. analyze paired outcomes by unique case rather than treating repetitions as
+    independent observations.
 
 The public development suite is visible to models and developers and cannot be
 used as evidence of generalization. Do not tune prompts, gates, or cases after
@@ -123,7 +178,9 @@ signal. That is the architecture being tested: the model does not know the
 answer, while the deterministic control plane can reject an incorrect result.
 Results must not be generalized to tasks where no equivalent verifier exists.
 
-A 20-case pilot is diagnostic rather than conclusive. Formal validation needs
-larger protected sets, repeated runs, confidence intervals, blind human grading
-for open-ended quality, and comparison against additional baselines. The JSON
-result is not signed or hash-chained; archive it with trusted external hashes.
+A 30- to 50-case pilot remains diagnostic rather than conclusive. Statistical
+tests quantify the observed protected sample; they do not prove generalization
+to other tasks. Formal validation needs larger protected sets, independent
+replication, blind human grading for open-ended quality, and comparison against
+additional baselines. The JSON result is not signed or hash-chained; archive it
+with trusted external hashes.
