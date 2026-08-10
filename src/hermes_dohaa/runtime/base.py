@@ -111,6 +111,7 @@ class VerifierFeedback:
     code: str
     reason: str
     evidence_ids: tuple[str, ...] = ()
+    details: Any | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("gate", "code", "reason"):
@@ -126,14 +127,29 @@ class VerifierFeedback:
             raise ValueError(
                 "feedback evidence_ids must contain non-empty strings"
             )
+        object.__setattr__(self, "details", _json_clone(self.details))
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "VerifierFeedback":
+        allowed = {"gate", "code", "reason", "evidence_ids", "details"}
+        if set(raw) - allowed:
+            raise ValueError(f"unknown feedback fields: {sorted(set(raw) - allowed)}")
+        evidence_ids = raw.get("evidence_ids", [])
+        if not isinstance(evidence_ids, list):
+            raise ValueError("feedback evidence_ids must be a list")
+        return cls(raw.get("gate"), raw.get("code"), raw.get("reason"),
+                   tuple(evidence_ids), raw.get("details"))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "gate": self.gate,
             "code": self.code,
             "reason": self.reason,
             "evidence_ids": list(self.evidence_ids),
         }
+        if self.details is not None:
+            result["details"] = _json_clone(self.details)
+        return result
 
 
 class AgentRuntime(Protocol):
@@ -150,3 +166,12 @@ def _text(raw: Mapping[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{key} must be a non-empty string")
     return value.strip()
+
+
+def _json_clone(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        return json.loads(json.dumps(value, allow_nan=False))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"details must be JSON-serializable: {exc}") from exc
