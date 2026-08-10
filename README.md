@@ -40,6 +40,7 @@ The `v0.1` bootstrap implements:
 - retry, no-progress termination, and human escalation;
 - structured verifier feedback and stable terminal reason codes;
 - fail-closed approval checkpoints that preserve the original run identity;
+- source-bound control-plane manifests for resumable approvals;
 - a standard-library-only runtime with unit and integration tests.
 
 ```mermaid
@@ -90,7 +91,8 @@ hermes-dohaa run examples/task_contract.json \
 ```
 
 The resume path verifies the complete ledger chain and the exact contract hash,
-then reuses the checkpointed proposal and gate verdicts without contacting
+requires the current control-plane source and gate configuration to match the
+checkpoint, then reuses the proposal and gate verdicts without contacting
 Hermes. Other terminal outcomes are not resumable.
 
 Verify an archived evidence ledger without contacting Hermes:

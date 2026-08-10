@@ -10,6 +10,11 @@ from uuid import uuid4
 
 from hermes_dohaa.assurance.gates import Gate, GateResult
 from hermes_dohaa.contracts.models import TaskContract
+from hermes_dohaa.controller.identity import (
+    ControlPlaneIdentity,
+    ControlPlaneIdentityError,
+    capture_control_plane_identity,
+)
 from hermes_dohaa.evidence.ledger import EvidenceLedger
 from hermes_dohaa.runtime.base import (
     AgentRuntime,
@@ -34,6 +39,7 @@ class RunReasonCode(StrEnum):
     NO_PROGRESS = "repair.no_progress"
     ATTEMPT_BUDGET_EXHAUSTED = "budget.exhausted"
     HUMAN_APPROVAL_REQUIRED = "approval.required"
+    CONTROL_PLANE_IDENTITY_FAILED = "control_plane.identity_failed"
 
 
 class RunResumeErrorCode(StrEnum):
@@ -42,6 +48,7 @@ class RunResumeErrorCode(StrEnum):
     CONTRACT_MISMATCH = "resume.contract_mismatch"
     APPROVAL_MISSING = "resume.approval_missing"
     CHECKPOINT_INVALID = "resume.checkpoint_invalid"
+    CONTROL_PLANE_MISMATCH = "resume.control_plane_mismatch"
 
 
 class RunResumeError(RuntimeError):
@@ -59,10 +66,11 @@ class RunCheckpoint:
     proposal: Proposal
     proposal_fingerprint: str
     gate_results: tuple[GateResult, ...]
+    control_plane: ControlPlaneIdentity
     reason_code: RunReasonCode
 
     def __post_init__(self) -> None:
-        if self.schema_version != "1.0":
+        if self.schema_version != "1.1":
             raise ValueError(
                 f"unsupported checkpoint schema: {self.schema_version!r}"
             )
@@ -90,6 +98,10 @@ class RunCheckpoint:
         gate_names = [result.gate for result in self.gate_results]
         if len(gate_names) != len(set(gate_names)):
             raise ValueError("checkpoint gate names must be unique")
+        if not isinstance(self.control_plane, ControlPlaneIdentity):
+            raise ValueError(
+                "checkpoint control_plane must be a ControlPlaneIdentity"
+            )
         if self.reason_code is not RunReasonCode.HUMAN_APPROVAL_REQUIRED:
             raise ValueError("checkpoint reason must be approval.required")
 
@@ -103,6 +115,7 @@ class RunCheckpoint:
             "proposal",
             "proposal_fingerprint",
             "gate_results",
+            "control_plane",
             "reason_code",
         }
         unknown = set(raw) - allowed
@@ -112,12 +125,15 @@ class RunCheckpoint:
             )
         proposal_raw = raw.get("proposal")
         gate_results_raw = raw.get("gate_results")
+        control_plane_raw = raw.get("control_plane")
         if not isinstance(proposal_raw, dict):
             raise ValueError("checkpoint proposal must be an object")
         if not isinstance(gate_results_raw, list) or not all(
             isinstance(item, dict) for item in gate_results_raw
         ):
             raise ValueError("checkpoint gate_results must be a list of objects")
+        if not isinstance(control_plane_raw, dict):
+            raise ValueError("checkpoint control_plane must be an object")
         try:
             reason_code = RunReasonCode(raw.get("reason_code"))
         except ValueError as exc:
@@ -132,6 +148,7 @@ class RunCheckpoint:
             gate_results=tuple(
                 GateResult.from_dict(item) for item in gate_results_raw
             ),
+            control_plane=ControlPlaneIdentity.from_dict(control_plane_raw),
             reason_code=reason_code,
         )
 
@@ -144,6 +161,7 @@ class RunCheckpoint:
             "proposal": self.proposal.to_dict(),
             "proposal_fingerprint": self.proposal_fingerprint,
             "gate_results": [result.to_dict() for result in self.gate_results],
+            "control_plane": self.control_plane.to_dict(),
             "reason_code": self.reason_code.value,
         }
 
@@ -239,14 +257,38 @@ class DohaaController:
 
             if all(result.passed for result in last_gate_results):
                 if contract.requires_human_approval and not human_approved:
+                    try:
+                        control_plane = capture_control_plane_identity(
+                            self.gates
+                        )
+                    except ControlPlaneIdentityError as exc:
+                        self._record(
+                            run_id,
+                            "control_plane.failed",
+                            {
+                                "attempt": attempt,
+                                "error_type": type(exc).__name__,
+                                "error": str(exc),
+                            },
+                        )
+                        return self._finish(
+                            run_id,
+                            RunStatus.ESCALATED,
+                            attempt,
+                            proposal,
+                            last_gate_results,
+                            RunReasonCode.CONTROL_PLANE_IDENTITY_FAILED,
+                            "Control-plane identity could not be captured",
+                        )
                     checkpoint = RunCheckpoint(
-                        schema_version="1.0",
+                        schema_version="1.1",
                         run_id=run_id,
                         contract_sha256=_contract_sha256(contract),
                         attempt=attempt,
                         proposal=proposal,
                         proposal_fingerprint=proposal.fingerprint(),
                         gate_results=last_gate_results,
+                        control_plane=control_plane,
                         reason_code=RunReasonCode.HUMAN_APPROVAL_REQUIRED,
                     )
                     with self.ledger.transaction():
@@ -391,6 +433,18 @@ class DohaaController:
                 RunResumeErrorCode.CHECKPOINT_INVALID,
                 "configured gates do not match the approval checkpoint",
             )
+        try:
+            current_control_plane = capture_control_plane_identity(self.gates)
+        except ControlPlaneIdentityError as exc:
+            raise RunResumeError(
+                RunResumeErrorCode.CHECKPOINT_INVALID,
+                f"current control-plane identity cannot be captured: {exc}",
+            ) from exc
+        if current_control_plane.sha256 != checkpoint.control_plane.sha256:
+            raise RunResumeError(
+                RunResumeErrorCode.CONTROL_PLANE_MISMATCH,
+                "current control plane does not match the approval checkpoint",
+            )
         if checkpoint.contract_sha256 != _contract_sha256(contract):
             raise RunResumeError(
                 RunResumeErrorCode.CONTRACT_MISMATCH,
@@ -408,6 +462,7 @@ class DohaaController:
             {
                 "checkpoint_sequence": checkpoint_record.sequence,
                 "contract_sha256": checkpoint.contract_sha256,
+                "control_plane_sha256": checkpoint.control_plane.sha256,
                 "from_reason_code": checkpoint.reason_code.value,
                 "human_approved": True,
             },
