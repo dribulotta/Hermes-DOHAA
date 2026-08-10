@@ -132,7 +132,8 @@ A run is eligible for resumption only when its latest terminal event has
 2. preserve a quiescent backup or operationally safe SQLite snapshot;
 3. review the proposal, gate verdicts, contract, scope, and residual risk;
 4. obtain authorization through the deployment's approval process;
-5. use the original contract file and ledger path.
+5. confirm the approved controller source and gate configuration are active;
+6. use the original contract file and ledger path.
 
 Resume the exact run after approval:
 
@@ -142,11 +143,22 @@ Resume the exact run after approval:
       --human-approved
 
 The command verifies the full ledger chain and checkpoint, rejects a changed
-contract, and does not contact the cognitive runtime. A successful response
-must preserve the original `run_id`, report `reason_code` as `run.succeeded`,
-and leave both `run.resumed` and the final `run.finished` events in the ledger.
-The eligibility check and final events commit atomically. Repeat attempts fail
+contract, rejects changes to the controller source or configured gates, and
+does not contact the cognitive runtime. A successful response must preserve
+the original `run_id`, report `reason_code` as `run.succeeded`, and leave both
+`run.resumed` and the final `run.finished` events in the ledger. The
+eligibility check and final events commit atomically. Repeat attempts fail
 because a successful run is no longer eligible.
+
+Checkpoint schema `1.1` introduced the control-plane manifest. Checkpoints
+created with schema `1.0` do not carry that identity and intentionally fail
+closed after this update. Complete or explicitly abandon those approvals before
+upgrading; otherwise rerun the original contract to create a new checkpoint.
+
+Do not replace source files underneath a running controller process. Install
+reviewed immutable artifacts and restart the process after an approved update.
+The checkpoint manifest detects source drift but does not establish publisher
+identity or replace package-signature and deployment-attestation controls.
 
 The CLI flag asserts that approval already exists; it does not authenticate an
 approver. Restrict access to the controller service account and retain the

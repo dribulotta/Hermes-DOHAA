@@ -3,7 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from hermes_dohaa.assurance.gates import ActionPolicyGate, ClaimEvidenceGate, RequiredEvidenceGate
+from hermes_dohaa.assurance.gates import (
+    ActionPolicyGate,
+    ClaimEvidenceGate,
+    GateResult,
+    RequiredEvidenceGate,
+)
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.controller.engine import (
     DohaaController,
@@ -13,6 +18,7 @@ from hermes_dohaa.controller.engine import (
     RunResumeErrorCode,
     RunStatus,
 )
+from hermes_dohaa.controller.identity import capture_control_plane_identity
 from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
 from hermes_dohaa.runtime.base import Claim, EvidenceItem, Proposal
 from test_contracts import valid_contract
@@ -37,6 +43,25 @@ def passing_proposal():
         evidence=(evidence,),
         requested_actions=("artifact.read",),
     )
+
+
+class AlternateActionPolicyGate:
+    name = "action_policy"
+
+    def evaluate(self, contract, proposal):
+        del contract, proposal
+        return None
+
+
+class NonJsonPassGate:
+    name = "fixture"
+
+    def __init__(self):
+        self.opaque = object()
+
+    def evaluate(self, contract, proposal):
+        del contract, proposal
+        return GateResult(self.name, True, "Fixture passed")
 
 
 class ControllerTests(unittest.TestCase):
@@ -238,6 +263,20 @@ class ControllerTests(unittest.TestCase):
                     pending.run_id,
                     human_approved=True,
                 )
+            with self.assertRaises(RunResumeError) as control_plane_mismatch:
+                DohaaController(
+                    SequenceRuntime([]),
+                    (
+                        AlternateActionPolicyGate(),
+                        ClaimEvidenceGate(),
+                        RequiredEvidenceGate(),
+                    ),
+                    ledger,
+                ).resume(
+                    contract,
+                    pending.run_id,
+                    human_approved=True,
+                )
             with self.assertRaises(RunResumeError) as missing_run:
                 controller.resume(
                     contract,
@@ -258,6 +297,10 @@ class ControllerTests(unittest.TestCase):
             RunResumeErrorCode.CHECKPOINT_INVALID,
         )
         self.assertEqual(
+            control_plane_mismatch.exception.code,
+            RunResumeErrorCode.CONTROL_PLANE_MISMATCH,
+        )
+        self.assertEqual(
             missing_run.exception.code,
             RunResumeErrorCode.NOT_FOUND,
         )
@@ -272,34 +315,69 @@ class ControllerTests(unittest.TestCase):
             for gate in self.gates
         )
         checkpoint = RunCheckpoint(
-            schema_version="1.0",
+            schema_version="1.1",
             run_id="run-a",
             contract_sha256="a" * 64,
             attempt=1,
             proposal=proposal,
             proposal_fingerprint=proposal.fingerprint(),
             gate_results=gate_results,
+            control_plane=capture_control_plane_identity(self.gates),
             reason_code=RunReasonCode.HUMAN_APPROVAL_REQUIRED,
         ).to_dict()
+
+        legacy_checkpoint = dict(checkpoint)
+        legacy_checkpoint["schema_version"] = "1.0"
+        with self.assertRaisesRegex(ValueError, "unsupported checkpoint schema"):
+            RunCheckpoint.from_dict(legacy_checkpoint)
+
         checkpoint["proposal"]["result"] = {"summary": "modified"}
 
         with self.assertRaisesRegex(ValueError, "fingerprint"):
             RunCheckpoint.from_dict(checkpoint)
 
         checkpoint = RunCheckpoint(
-            schema_version="1.0",
+            schema_version="1.1",
             run_id="run-a",
             contract_sha256="a" * 64,
             attempt=1,
             proposal=proposal,
             proposal_fingerprint=proposal.fingerprint(),
             gate_results=gate_results,
+            control_plane=capture_control_plane_identity(self.gates),
             reason_code=RunReasonCode.HUMAN_APPROVAL_REQUIRED,
         ).to_dict()
         checkpoint["proposal"]["evidence"][0]["sha256"] = "0" * 64
 
         with self.assertRaisesRegex(ValueError, "sha256"):
             RunCheckpoint.from_dict(checkpoint)
+
+    def test_checkpoint_identity_failure_escalates_without_checkpoint(self):
+        contract = TaskContract.from_dict(
+            valid_contract(
+                risk_level="critical",
+                requires_human_approval=True,
+            )
+        )
+        with EvidenceLedger() as ledger:
+            result = DohaaController(
+                SequenceRuntime([passing_proposal()]),
+                (NonJsonPassGate(),),
+                ledger,
+            ).run(contract)
+            events = tuple(ledger.records(result.run_id))
+
+        self.assertEqual(result.status, RunStatus.ESCALATED)
+        self.assertEqual(
+            result.reason_code,
+            RunReasonCode.CONTROL_PLANE_IDENTITY_FAILED,
+        )
+        self.assertTrue(
+            any(record.event_type == "control_plane.failed" for record in events)
+        )
+        self.assertFalse(
+            any(record.event_type == "run.checkpointed" for record in events)
+        )
 
     def test_resume_rejects_a_tampered_ledger_before_appending(self):
         contract = TaskContract.from_dict(

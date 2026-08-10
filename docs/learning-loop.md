@@ -65,6 +65,7 @@ Terminal controller outcomes also expose a stable `reason_code`:
 | `repair.no_progress` | A previous proposal fingerprint was repeated |
 | `budget.exhausted` | The bounded attempt budget was consumed |
 | `approval.required` | Deterministic gates passed but human approval is pending |
+| `control_plane.identity_failed` | The controller could not identify its code or gate configuration |
 
 The human-readable terminal `reason` remains descriptive. Automation should
 branch on `reason_code`, never on the wording of `reason`.
@@ -80,6 +81,7 @@ as one SQLite transaction. The checkpoint contains:
 - the SHA-256 digest of the canonical task contract;
 - the complete proposal and its fingerprint;
 - the passing deterministic gate results;
+- a manifest identifying the control-plane source and gate configuration;
 - the terminal reason code that made the run eligible for resumption.
 
 After an authorized operator approves the transition, resume the run against
@@ -92,7 +94,9 @@ the same ledger and exact task contract:
 
 Before appending anything, the controller verifies the complete ledger hash
 chain, the checkpoint schema, the proposal fingerprint, the terminal event,
-the contract digest, and the configured gate names and order. A valid resume
+the contract digest, and the control-plane manifest. The manifest hashes the
+source of the controller, contracts, proposal types, gates, and ledger, plus
+the concrete gate classes, order, and JSON configuration. A valid resume
 preserves the original `run_id`, records `run.resumed`, and appends a new
 `run.finished` event with `run.succeeded`. It does not contact Hermes or rerun
 gates because it consumes the immutable proposal and deterministic verdicts
@@ -114,6 +118,21 @@ Resume failures expose stable codes:
 | `resume.contract_mismatch` | The supplied contract differs from the checkpoint |
 | `resume.approval_missing` | Explicit approval was not supplied |
 | `resume.checkpoint_invalid` | The ledger or checkpoint failed validation |
+| `resume.control_plane_mismatch` | Controller source or gate configuration changed |
+
+Custom gates used in an approval checkpoint must expose inspectable Python
+source and JSON-serializable state through dataclass fields or `__dict__`.
+Otherwise checkpoint creation terminates with
+`control_plane.identity_failed`.
+
+Checkpoint schema `1.1` introduced this manifest. Earlier `1.0` checkpoints
+cannot prove the active control-plane identity and therefore fail closed; the
+original contract must be run again to produce a resumable checkpoint.
+
+The manifest detects drift between checkpoint creation and resumption. It is
+not a software signature, proof of code provenance, or substitute for a pinned
+and reviewed deployment artifact. Controller source must remain immutable for
+the lifetime of a process; restart the service after every approved update.
 
 `--human-approved` is a control-plane assertion, not an identity provider or
 approval workflow. Operators must restrict command execution and ledger write
