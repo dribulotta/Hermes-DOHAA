@@ -200,6 +200,17 @@ Runtime failures are outcomes, not silently discarded samples. A completed
 experiment may therefore contain failed conditions while the command itself
 returns successfully.
 
+## Protected aggregate result
+
+The [protected semantic holdout v3 aggregate report](evaluation-results/protected-semantic-holdout-v3.md)
+documents a bounded confirmation after the deterministic repair implementation
+was integrated. The protected suite and all individual results remain private;
+the report contains aggregate evidence only and does not publish the suite.
+
+This holdout must not be reused to guide subsequent changes and then presented
+as independent confirmation of those changes. A new confirmation requires a
+new independently frozen holdout.
+
 ## Freeze a protected pilot
 
 Create the first meaningful pilot outside the public repository. It must have
