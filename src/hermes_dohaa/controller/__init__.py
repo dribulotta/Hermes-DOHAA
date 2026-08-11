@@ -14,9 +14,14 @@ from .identity import (
     GateIdentity,
     capture_control_plane_identity,
 )
+from .semantic_repair import (
+    DeterministicSemanticRepair,
+    propose_deterministic_semantic_repair,
+)
 
 __all__ = [
     "DohaaController",
+    "DeterministicSemanticRepair",
     "ComponentIdentity",
     "ControlPlaneIdentity",
     "ControlPlaneIdentityError",
@@ -28,4 +33,5 @@ __all__ = [
     "RunResumeErrorCode",
     "RunStatus",
     "capture_control_plane_identity",
+    "propose_deterministic_semantic_repair",
 ]

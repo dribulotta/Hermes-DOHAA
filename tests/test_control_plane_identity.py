@@ -59,6 +59,10 @@ class ControlPlaneIdentityTests(unittest.TestCase):
             "hermes_dohaa.assurance.semantic_assertions",
             component_names,
         )
+        self.assertIn(
+            "hermes_dohaa.controller.semantic_repair",
+            component_names,
+        )
         with self.assertRaises(TypeError):
             first.gates[0].configuration["expected"] = False
 

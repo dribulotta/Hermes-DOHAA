@@ -116,6 +116,31 @@ Suites and task contracts without `semantic_assertions` retain their prior gate
 set and behavior. Adding assertions is a protocol change and requires a newly
 frozen protected suite for independent confirmation.
 
+### Deterministic semantic repair
+
+After a proposal fails, the controller may correct a narrowly defined class of
+contract-visible semantic equalities before spending another runtime call. A
+repair is eligible only when one side of an `equals` assertion is a direct
+`result` reference and the other side is an expression derived exclusively
+from ordinary visible `inputs`. The controller evaluates that expression,
+replaces only the existing referenced result leaf in a cloned proposal, and
+runs every configured gate again. The candidate is accepted only if the entire
+gate set passes; action, evidence, policy, exact-result, and human-approval
+boundaries retain their authority.
+
+The repair path rejects non-equality assertions, result-dependent expressions,
+missing result leaves, overlapping pointers, conflicting values for one
+pointer, invalid expressions, and evaluation errors. It never mutates the
+runtime proposal, calls tools, performs actions, or reads `expected_result`.
+The ledger preserves the original proposal fingerprint and records repair
+events using assertion IDs and result pointers only, never computed values.
+
+This mechanism is deterministic normalization, not model learning or general
+reasoning. It can save a bounded retry when the contract already declares how
+to compute the correct field. A protected suite used to design or inspect this
+behavior becomes development evidence and must not be reused as fresh
+confirmation after the implementation changes.
+
 ## Run an evaluation
 
 The public example exercises the runner but is not a protected benchmark:

@@ -15,6 +15,9 @@ from hermes_dohaa.controller.identity import (
     ControlPlaneIdentityError,
     capture_control_plane_identity,
 )
+from hermes_dohaa.controller.semantic_repair import (
+    propose_deterministic_semantic_repair,
+)
 from hermes_dohaa.evidence.ledger import EvidenceLedger
 from hermes_dohaa.runtime.base import (
     AgentRuntime,
@@ -276,6 +279,46 @@ class DohaaController:
                     "results": [result.to_dict() for result in last_gate_results],
                 },
             )
+
+            if not all(result.passed for result in last_gate_results):
+                repair = propose_deterministic_semantic_repair(
+                    contract,
+                    proposal,
+                )
+                if repair is not None:
+                    repaired_gate_results = tuple(
+                        gate.evaluate(contract, repair.proposal)
+                        for gate in self.gates
+                    )
+                    self._record(
+                        run_id,
+                        "gates.evaluated",
+                        {
+                            "attempt": attempt,
+                            "source": "deterministic_semantic_repair",
+                            "results": [
+                                result.to_dict()
+                                for result in repaired_gate_results
+                            ],
+                        },
+                    )
+                    repair_event = (
+                        "semantic.repair.applied"
+                        if all(result.passed for result in repaired_gate_results)
+                        else "semantic.repair.rejected"
+                    )
+                    self._record(
+                        run_id,
+                        repair_event,
+                        {
+                            "assertion_ids": list(repair.assertion_ids),
+                            "result_pointers": list(repair.result_pointers),
+                        },
+                    )
+                    if all(result.passed for result in repaired_gate_results):
+                        proposal = repair.proposal
+                        last_proposal = proposal
+                        last_gate_results = repaired_gate_results
 
             if all(result.passed for result in last_gate_results):
                 if contract.requires_human_approval and not human_approved:
