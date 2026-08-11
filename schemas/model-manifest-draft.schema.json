@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/hermes-dohaa/model-manifest-draft.schema.json",
+  "title": "Hermes-DOHAA frozen model manifest draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol_id",
+    "protocol_sha256",
+    "models"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "protocol_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "models": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/model"
+      }
+    }
+  },
+  "$defs": {
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot_id",
+        "model_alias",
+        "model_artifact_id",
+        "provider",
+        "backend",
+        "backend_version",
+        "architecture",
+        "context_length",
+        "quantization",
+        "server_config_sha256"
+      ],
+      "properties": {
+        "slot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_alias": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backend": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backend_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architecture": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": ["string", "integer", "number", "boolean"]
+          }
+        },
+        "context_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "quantization": {
+          "type": "string",
+          "minLength": 1
+        },
+        "server_config_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

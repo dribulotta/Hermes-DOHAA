@@ -35,10 +35,16 @@ from hermes_dohaa.evaluation import (
     EvaluationProtocolError,
     EvaluationSuite,
     EvaluationSuiteError,
+    ModelManifest,
+    ModelManifestError,
+    MultimodelEvaluationError,
     SuiteCommitment,
     SuiteCommitmentError,
+    freeze_model_manifest,
     run_comparative_evaluation,
+    run_multimodel_evaluation,
     write_evaluation_result,
+    write_model_manifest,
     write_suite_commitment,
 )
 from hermes_dohaa.runtime.hermes_api import HermesApiRuntime
@@ -133,6 +139,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_protocol.add_argument("protocol", type=Path)
 
+    freeze_manifest = subparsers.add_parser(
+        "freeze-model-manifest",
+        help="Freeze exact model and server identities before suite authorship",
+    )
+    freeze_manifest.add_argument("draft", type=Path)
+    freeze_manifest.add_argument("--protocol", type=Path, required=True)
+    freeze_manifest.add_argument("--output", type=Path, required=True)
+
+    multimodel = subparsers.add_parser(
+        "evaluate-multimodel",
+        help="Run a frozen suite across every preregistered model",
+    )
+    multimodel.add_argument("suite", type=Path)
+    multimodel.add_argument("--suite-commitment", type=Path, required=True)
+    multimodel.add_argument("--protocol", type=Path, required=True)
+    multimodel.add_argument("--model-manifest", type=Path, required=True)
+    multimodel.add_argument("--output", type=Path, required=True)
+    multimodel.add_argument(
+        "--hermes-url",
+        default="http://127.0.0.1:8642",
+        help="Shared OpenAI-compatible endpoint for the frozen model aliases",
+    )
+
     verify_ledger = subparsers.add_parser(
         "verify-ledger",
         help="Verify an evidence ledger offline without modifying it",
@@ -157,6 +186,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_freeze_suite(args)
     if args.command == "validate-evaluation-protocol":
         return _run_validate_evaluation_protocol(args)
+    if args.command == "freeze-model-manifest":
+        return _run_freeze_model_manifest(args)
+    if args.command == "evaluate-multimodel":
+        return _run_evaluate_multimodel(args)
 
     try:
         contract = TaskContract.from_json_file(args.contract)
@@ -394,6 +427,112 @@ def _run_validate_evaluation_protocol(args: argparse.Namespace) -> int:
         "model_slots": len(protocol.model_slots),
         "case_count": protocol.suite_policy["case_count"],
         "domain_counts": dict(protocol.suite_policy["domain_counts"]),
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _run_freeze_model_manifest(args: argparse.Namespace) -> int:
+    try:
+        protocol = EvaluationProtocol.from_json_file(args.protocol)
+        manifest = freeze_model_manifest(protocol, args.draft)
+        write_model_manifest(args.output, manifest)
+    except (
+        EvaluationProtocolError,
+        ModelManifestError,
+        OSError,
+        ValueError,
+    ) as exc:
+        payload = {
+            "status": "failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    payload = {
+        "status": "frozen",
+        "manifest_id": manifest.manifest_id,
+        "protocol_id": manifest.protocol_id,
+        "protocol_sha256": manifest.protocol_sha256,
+        "model_count": len(manifest.models),
+        "manifest_sha256": manifest.sha256(),
+        "output": str(args.output),
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _run_evaluate_multimodel(args: argparse.Namespace) -> int:
+    try:
+        if args.output.exists():
+            raise FileExistsError(
+                f"multi-model evaluation output already exists: {args.output}"
+            )
+        protocol = EvaluationProtocol.from_json_file(args.protocol)
+        manifest = ModelManifest.from_json_file(args.model_manifest)
+        suite = EvaluationSuite.from_json_file(args.suite)
+        commitment = SuiteCommitment.from_json_file(args.suite_commitment)
+        execution = protocol.execution_policy
+
+        def runtime_factory_builder(model):
+            def runtime_factory(contract, session_id, trial_sampling_seed):
+                del contract
+                return HermesApiRuntime(
+                    base_url=args.hermes_url,
+                    model=model.model_alias,
+                    timeout_seconds=execution["timeout_seconds"],
+                    session_id=session_id,
+                    reasoning_effort=execution["reasoning_effort"],
+                    temperature=execution["temperature"],
+                    top_p=execution["top_p"],
+                    sampling_seed=trial_sampling_seed,
+                )
+
+            return runtime_factory
+
+        result = run_multimodel_evaluation(
+            suite,
+            commitment,
+            protocol,
+            manifest,
+            runtime_factory_builder,
+            runtime_context={
+                "adapter": "hermes_api",
+                "hermes_dohaa_version": __version__,
+                "hermes_url": args.hermes_url,
+            },
+        )
+        write_evaluation_result(args.output, result)
+    except (
+        EvaluationProtocolError,
+        EvaluationSuiteError,
+        ModelManifestError,
+        MultimodelEvaluationError,
+        SuiteCommitmentError,
+        OSError,
+        ValueError,
+    ) as exc:
+        payload = {
+            "status": "failed",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    payload = {
+        "status": "completed",
+        "evaluation_id": result["evaluation_id"],
+        "protocol_id": result["protocol_id"],
+        "protocol_sha256": result["protocol_sha256"],
+        "model_manifest_sha256": result["model_manifest_sha256"],
+        "suite_id": result["suite_id"],
+        "suite_sha256": result["suite_sha256"],
+        "output": str(args.output),
+        "aggregate_analysis": result["aggregate_analysis"],
+        "success_assessment": result["success_assessment"],
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0

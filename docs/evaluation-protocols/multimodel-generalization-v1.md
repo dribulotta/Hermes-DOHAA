@@ -1,6 +1,7 @@
 # Multi-model generalization protocol v1
 
-Status: preregistered; no protected suite has been authored or executed.
+Status: preregistered with an implemented executor; no model manifest or
+protected suite has been frozen, authored, or executed.
 
 This protocol tests whether the bounded quality improvement observed with one
 runtime artifact persists across three preselected model slots. It fixes the
@@ -126,6 +127,55 @@ Schema validation is also available through
 [`schemas/evaluation-protocol.schema.json`](../../schemas/evaluation-protocol.schema.json).
 The schema covers structural constraints; the CLI additionally enforces
 cross-field invariants such as reconciled model and domain counts.
+
+## Freeze the model identities
+
+After this executor is merged, adapt the sanitized
+[`model manifest example`](../../examples/multimodel-model-manifest.example.json)
+outside the repository. Record every exact alias and artifact identity, the
+provider and backend version, architecture details, context length,
+quantization, and a SHA-256 digest of the complete server configuration.
+Then freeze it:
+
+    hermes-dohaa freeze-model-manifest /protected/model-manifest-draft.json \
+      --protocol examples/multimodel-evaluation-protocol.json \
+      --output /protected/model-manifest.json
+
+The output is mode `0600`, non-overwriting, UUID-tagged, timestamped, and bound
+to the canonical protocol digest. The command verifies exact slot order and
+rejects duplicate aliases or artifact identities. It records operator-supplied
+identity evidence; it cannot independently attest that a serving endpoint is
+actually running those artifacts. Preserve and independently verify the
+server configuration associated with each digest.
+
+Only after this file is frozen may the 48 new protected cases be authored and
+committed. The suite commitment timestamp must be later than the manifest
+timestamp.
+
+## Execute and assess
+
+Run all three frozen aliases through one fail-closed command:
+
+    HERMES_API_KEY="$(cat /path/to/runtime-api.key)" \
+    hermes-dohaa evaluate-multimodel /protected/holdout.json \
+      --suite-commitment /protected/holdout.commitment.json \
+      --protocol examples/multimodel-evaluation-protocol.json \
+      --model-manifest /protected/model-manifest.json \
+      --hermes-url http://192.0.2.106:8642/v1 \
+      --output /protected/multimodel-result.json
+
+There are no CLI overrides for seeds, repetition count, sampling, reasoning,
+or timeout. The executor reads those values from the preregistration. Before
+the first runtime call it verifies the protocol digest, exact model slots,
+suite commitment, case and domain counts, and manifest-before-suite order.
+
+The private, non-overwriting result contains the three complete paired runs,
+per-model statistics, and the global unique-case analysis. The global sign is
+computed only after each condition's pass indicator is averaged across the
+three models. It never treats model-case observations as independent cases.
+Every preregistered success criterion receives `passed`, `failed`, or
+`unevaluable` status. Missing token usage makes the token guardrail
+unevaluable and therefore prevents an overall pass.
 
 ## Interpretation limits
 
