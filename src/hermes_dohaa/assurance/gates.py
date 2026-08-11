@@ -12,6 +12,10 @@ import json
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
 from hermes_dohaa.assurance.result_spec import json_equal, parse_result_spec, validate_result
+from hermes_dohaa.assurance.semantic_assertions import (
+    parse_semantic_assertions,
+    validate_semantic_assertions,
+)
 
 
 class GateFailureCode(StrEnum):
@@ -20,6 +24,9 @@ class GateFailureCode(StrEnum):
     RESULT_KEYS_MISMATCH = "result.keys_mismatch"
     RESULT_TYPE_MISMATCH = "result.type_mismatch"
     RESULT_ENUM_INVALID = "result.enum_invalid"
+    SEMANTIC_SPEC_INVALID = "semantic.spec_invalid"
+    SEMANTIC_ASSERTION_FAILED = "semantic.assertion_failed"
+    SEMANTIC_EVALUATION_ERROR = "semantic.evaluation_error"
     POLICY_INPUT_INVALID = "policy.input_invalid"
     POLICY_DECISION_MISMATCH = "policy.decision_mismatch"
     POLICY_REASON_CODE_MISMATCH = "policy.reason_code_mismatch"
@@ -283,6 +290,50 @@ class ResultSpecGate:
             self.name,
             True,
             "Proposal result conforms to the declared result_spec",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticAssertionsGate:
+    """Evaluate bounded relations declared in contract-visible inputs."""
+
+    name: str = "semantic_assertions"
+
+    def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
+        raw = contract.inputs.get("semantic_assertions")
+        try:
+            assertions = parse_semantic_assertions(raw)
+        except ValueError as exc:
+            return GateResult(
+                self.name,
+                False,
+                f"Invalid semantic_assertions: {exc}",
+                failure_code=GateFailureCode.SEMANTIC_SPEC_INVALID,
+            )
+
+        details = validate_semantic_assertions(
+            contract.inputs,
+            proposal.result,
+            assertions,
+        )
+        if details:
+            failed_ids = [
+                violation["assertion_id"]
+                for violation in details["violations"]
+            ]
+            first_code = details["violations"][0]["code"]
+            return GateResult(
+                self.name,
+                False,
+                f"Semantic assertions failed: {failed_ids}",
+                failure_code=first_code,
+                details=details,
+            )
+
+        return GateResult(
+            self.name,
+            True,
+            "All contract-visible semantic assertions passed",
         )
 
 

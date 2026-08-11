@@ -50,6 +50,15 @@ class ControlPlaneIdentityTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(restored, first)
         self.assertEqual(len(first.sha256), 64)
+        component_names = {item.name for item in first.components}
+        self.assertIn(
+            "hermes_dohaa.assurance.result_spec",
+            component_names,
+        )
+        self.assertIn(
+            "hermes_dohaa.assurance.semantic_assertions",
+            component_names,
+        )
         with self.assertRaises(TypeError):
             first.gates[0].configuration["expected"] = False
 

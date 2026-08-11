@@ -18,6 +18,8 @@ _CONTROL_PLANE_MODULES = (
     "hermes_dohaa.contracts.models",
     "hermes_dohaa.runtime.base",
     "hermes_dohaa.assurance.gates",
+    "hermes_dohaa.assurance.result_spec",
+    "hermes_dohaa.assurance.semantic_assertions",
     "hermes_dohaa.evidence.ledger",
     "hermes_dohaa.controller.identity",
     "hermes_dohaa.controller.engine",

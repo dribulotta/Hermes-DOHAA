@@ -24,6 +24,7 @@ from hermes_dohaa.assurance.gates import (
     RequiredEvidenceGate,
     ResultEqualsGate,
     ResultSpecGate,
+    SemanticAssertionsGate,
 )
 from hermes_dohaa.controller.engine import DohaaController, RunReasonCode
 from hermes_dohaa.contracts.models import TaskContract
@@ -455,6 +456,8 @@ def _evaluation_gates(case: EvaluationCase) -> tuple[Gate, ...]:
     gates: list[Gate] = []
     if "result_spec" in case.contract.inputs:
         gates.append(ResultSpecGate())
+    if "semantic_assertions" in case.contract.inputs:
+        gates.append(SemanticAssertionsGate())
     if case.domain == "policy_decision":
         gates.extend((PolicyDecisionGate(), PolicyReasonCodeGate()))
     gates.extend(
@@ -632,6 +635,7 @@ def _score_dimensions(results: tuple[Any, ...]) -> dict[str, bool | None]:
     verdicts = {result.gate: result.passed for result in results}
     dimension_names = (
         "result_spec",
+        "semantic_assertions",
         "policy_decision",
         "policy_reason_code",
         "result_equals",

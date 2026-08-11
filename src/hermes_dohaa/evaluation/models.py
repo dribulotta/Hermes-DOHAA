@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from hermes_dohaa.contracts.models import ContractError, TaskContract
 from hermes_dohaa.assurance.result_spec import parse_result_spec
+from hermes_dohaa.assurance.semantic_assertions import parse_semantic_assertions
 
 
 class EvaluationSuiteError(ValueError):
@@ -57,6 +58,15 @@ class EvaluationCase:
             parse_result_spec(contract.inputs["result_spec"])
         except ValueError as exc:
             raise EvaluationSuiteError(f"invalid result_spec: {exc}") from exc
+        if "semantic_assertions" in contract.inputs:
+            try:
+                parse_semantic_assertions(
+                    contract.inputs["semantic_assertions"]
+                )
+            except ValueError as exc:
+                raise EvaluationSuiteError(
+                    f"invalid semantic_assertions: {exc}"
+                ) from exc
         domain = _required_text(raw, "domain")
         if domain == "policy_decision" and (
             not isinstance(contract.inputs.get("policy"), dict)

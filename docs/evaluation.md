@@ -36,6 +36,86 @@ beyond those contract inputs.
 The suite loader rejects a contract whose inputs contain an `expected_result`
 field. Suite and contract authors must also review inputs for indirect leakage.
 
+## Contract-visible semantic assertions
+
+`result_spec` validates shape, types, and visible enums. A contract may also
+declare `inputs.semantic_assertions` to validate deterministic relations between
+the proposal result and ordinary visible inputs. The same gate is available to
+normal `run` commands and comparative evaluations.
+
+For example, this assertion requires the proposed available budget to equal the
+visible total minus visible spent and committed amounts:
+
+    {
+      "assertion_id": "available-budget",
+      "operator": "equals",
+      "left": {
+        "op": "ref",
+        "source": "result",
+        "pointer": "/available_budget"
+      },
+      "right": {
+        "op": "subtract",
+        "args": [
+          {
+            "op": "ref",
+            "source": "inputs",
+            "pointer": "/budget/total"
+          },
+          {
+            "op": "add",
+            "args": [
+              {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/budget/spent"
+              },
+              {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/budget/committed"
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+References use RFC 6901 JSON Pointers and may read only `inputs` or `result`.
+Input references cannot read the whole input object or the reserved
+`result_spec`, `semantic_assertions`, and `expected_result` paths. The language
+has no literal expression, arbitrary code, JSONPath, filesystem, network, or
+runtime-call operator. Consequently, every compared value comes from data
+already visible to the cognitive runtime or from its proposal.
+Every assertion must contain at least one `result` reference so a tautology
+between inputs cannot masquerade as proposal validation.
+
+Supported assertion operators are equality, inequality, ordered numeric or
+string comparisons, and array set equality. Expressions support:
+
+- numeric `add`, `subtract`, `multiply`, `divide`, `abs`, and `round`;
+- `length`, numeric `sum`, `min`, and `max`;
+- bounded array `filter`, `project`, `sort_by`, `at`, and `unique`;
+- timezone-aware `duration_minutes`, plus `add_days` and
+  `add_business_days`.
+
+Parsing is strict and bounded to 64 assertions, 512 expression nodes, depth 16,
+64 variadic arguments, and collections of 10,000 items. At most 100 violations
+are reported. Numeric operations reject absolute magnitudes greater than
+10<sup>100</sup>. Invalid declarations are rejected before an evaluation
+contacts the runtime. Evaluation errors fail closed.
+
+The stable failure codes are `semantic.spec_invalid`,
+`semantic.assertion_failed`, and `semantic.evaluation_error`. Diagnostics may
+identify the assertion, operator, reference path, type class, and configured
+bound, but never contain computed values or an oracle difference. The hidden
+`ResultEqualsGate` remains a separate exact scorer and still reveals only
+`result.mismatch`.
+
+Suites and task contracts without `semantic_assertions` retain their prior gate
+set and behavior. Adding assertions is a protocol change and requires a newly
+frozen protected suite for independent confirmation.
+
 ## Run an evaluation
 
 The public example exercises the runner but is not a protected benchmark:
@@ -76,8 +156,8 @@ The result records:
 - the randomized order for every case;
 - initial and final proposals for each condition;
 - each deterministic gate verdict;
-- per-dimension verdicts for result specification, policy semantics, exact
-  equality, action policy, and evidence;
+- per-dimension verdicts for result specification, visible semantic assertions,
+  policy semantics, exact equality, action policy, and evidence;
 - initial and final pass counts and rates;
 - paired wins, losses, and ties between conditions;
 - improvements and regressions;

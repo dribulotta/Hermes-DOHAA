@@ -9,6 +9,7 @@ from .gates import (
     RequiredEvidenceGate,
     ResultEqualsGate,
     ResultSpecGate,
+    SemanticAssertionsGate,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "RequiredEvidenceGate",
     "ResultEqualsGate",
     "ResultSpecGate",
+    "SemanticAssertionsGate",
 ]

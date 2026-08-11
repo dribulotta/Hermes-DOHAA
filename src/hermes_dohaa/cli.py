@@ -16,6 +16,12 @@ from hermes_dohaa.assurance.gates import (
     ClaimEvidenceGate,
     RequiredEvidenceGate,
     ResultEqualsGate,
+    ResultSpecGate,
+    SemanticAssertionsGate,
+)
+from hermes_dohaa.assurance.result_spec import parse_result_spec
+from hermes_dohaa.assurance.semantic_assertions import (
+    parse_semantic_assertions,
 )
 from hermes_dohaa.contracts.models import ContractError, TaskContract
 from hermes_dohaa.controller.engine import (
@@ -144,7 +150,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         contract = TaskContract.from_json_file(args.contract)
-    except ContractError as exc:
+        _validate_contract_gate_inputs(contract)
+    except (ContractError, ValueError) as exc:
         print(json.dumps({"valid": False, "error": str(exc)}, ensure_ascii=False))
         return 2
 
@@ -153,7 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     runtime = _runtime_from_args(args)
-    gates = (ActionPolicyGate(), ClaimEvidenceGate(), RequiredEvidenceGate())
+    gates = _contract_gates(contract)
     if args.resume_run_id is None:
         with EvidenceLedger(args.ledger) as ledger:
             result = DohaaController(runtime, gates, ledger).run(
@@ -215,6 +222,35 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["status"] = result.status.value
     print(json.dumps(payload, ensure_ascii=False, default=str))
     return 0 if result.status.value == "succeeded" else 1
+
+
+def _contract_gates(contract: TaskContract):
+    gates = []
+    if "result_spec" in contract.inputs:
+        gates.append(ResultSpecGate())
+    if "semantic_assertions" in contract.inputs:
+        gates.append(SemanticAssertionsGate())
+    gates.extend(
+        (ActionPolicyGate(), ClaimEvidenceGate(), RequiredEvidenceGate())
+    )
+    return tuple(gates)
+
+
+def _validate_contract_gate_inputs(contract: TaskContract) -> None:
+    if "result_spec" in contract.inputs:
+        try:
+            parse_result_spec(contract.inputs["result_spec"])
+        except ValueError as exc:
+            raise ValueError(f"invalid result_spec: {exc}") from exc
+    if "semantic_assertions" in contract.inputs:
+        try:
+            parse_semantic_assertions(
+                contract.inputs["semantic_assertions"]
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid semantic_assertions: {exc}"
+            ) from exc
 
 
 def _run_evaluate(args: argparse.Namespace) -> int:
