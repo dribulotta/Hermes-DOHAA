@@ -115,6 +115,12 @@ See [Comparative quality evaluation](docs/evaluation.md) for the experimental
 controls, contract-visible result specifications, repeated trials, sampling
 policy, protected-holdout protocol, metrics, and interpretation limits.
 
+An aggregate report from a protected 40-case evaluation recorded 100% final
+strict passage for DOHAA versus 82.5% for direct response, with seven paired
+wins and no losses. This bounded result is not evidence of universal
+superiority; see the
+[protected semantic holdout v3 report](docs/evaluation-results/protected-semantic-holdout-v3.md).
+
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
 ## Deployment and operations
