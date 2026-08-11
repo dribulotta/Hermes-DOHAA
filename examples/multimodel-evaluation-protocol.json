@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "protocol_id": "multimodel-generalization-v1",
+  "description": "Preregistered three-model protected evaluation of final strict passage.",
+  "status": "preregistered",
+  "conditions": [
+    "direct",
+    "self_reflection",
+    "dohaa"
+  ],
+  "model_slots": [
+    {
+      "slot_id": "qwen-35b-a3b-primary",
+      "selection_rule": "Pin the primary Qwen 35B-A3B artifact and server before suite authorship."
+    },
+    {
+      "slot_id": "qwen-27b-comparator",
+      "selection_rule": "Pin a Qwen 27B artifact that fits on the same inference host before authoring the suite."
+    },
+    {
+      "slot_id": "cross-family-comparator",
+      "selection_rule": "Pin one non-Qwen model in the available 26B-to-35B class before authoring the suite."
+    }
+  ],
+  "model_policy": {
+    "model_count": 3,
+    "artifact_identity_required": true,
+    "freeze_before_suite_authorship": true,
+    "allow_post_freeze_substitution": false
+  },
+  "suite_policy": {
+    "case_count": 48,
+    "domain_counts": {
+      "evidence_synthesis": 12,
+      "quantitative_reconciliation": 12,
+      "structured_extraction": 12,
+      "temporal_reasoning": 12
+    },
+    "new_cases_only": true,
+    "reuse_prior_holdouts": false,
+    "authoring_after_model_freeze": true
+  },
+  "execution_policy": {
+    "repetitions": 1,
+    "condition_order_seed": 20260819,
+    "sampling_seed": 20260819,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "reasoning_effort": "none",
+    "timeout_seconds": 120.0
+  },
+  "analysis_plan": {
+    "primary_comparison": "dohaa_vs_direct",
+    "primary_metric": "final_strict_pass",
+    "global_unit": "unique_case",
+    "global_aggregation": "mean_across_models_then_sign",
+    "per_model_test": "exact_two_sided_sign_test",
+    "alpha": 0.05,
+    "domain_analysis": "exploratory",
+    "multiple_comparison_claims": false,
+    "runtime_failures": "count_as_failures"
+  },
+  "success_criteria": {
+    "minimum_models_with_positive_delta": 2,
+    "maximum_models_with_negative_delta": 0,
+    "require_global_positive_delta": true,
+    "require_global_wins_exceed_losses": true,
+    "require_primary_p_below_alpha": true,
+    "maximum_regressions": 0,
+    "maximum_dohaa_average_runtime_calls": 1.5,
+    "maximum_dohaa_to_direct_token_ratio": 1.5
+  }
+}
