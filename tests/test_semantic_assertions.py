@@ -700,7 +700,7 @@ class SemanticEvaluationIntegrationTests(unittest.TestCase):
         ):
             EvaluationSuite.from_dict(raw)
 
-    def test_runner_reports_semantic_dimension_and_repairs_from_visible_feedback(self):
+    def test_runner_reports_semantic_dimension_and_deterministic_repair(self):
         suite = EvaluationSuite.from_dict(semantic_suite_dict())
         factory = VisibleSemanticFactory()
 
@@ -731,6 +731,7 @@ class SemanticEvaluationIntegrationTests(unittest.TestCase):
             }
             self.assertIn("semantic.assertion_failed", initial)
             self.assertTrue(outcome["final_score"]["all_gates_passed"])
+            self.assertEqual(outcome["runtime_calls"], 1)
 
         semantic_feedback = [
             item
@@ -739,7 +740,7 @@ class SemanticEvaluationIntegrationTests(unittest.TestCase):
             for item in call
             if item["code"] == "semantic.assertion_failed"
         ]
-        self.assertEqual(len(semantic_feedback), 2)
+        self.assertEqual(len(semantic_feedback), 0)
         serialized = json.dumps(semantic_feedback)
         self.assertNotIn("expected_result", serialized)
         self.assertNotIn("visible-answer-", serialized)
