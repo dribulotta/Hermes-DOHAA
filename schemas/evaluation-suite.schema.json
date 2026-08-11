@@ -270,6 +270,145 @@
           }
         }
       ]
+    },
+    "semanticExpression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "op": {
+          "enum": [
+            "ref",
+            "add",
+            "subtract",
+            "multiply",
+            "divide",
+            "abs",
+            "round",
+            "length",
+            "sum",
+            "min",
+            "max",
+            "filter",
+            "project",
+            "sort_by",
+            "at",
+            "unique",
+            "duration_minutes",
+            "add_days",
+            "add_business_days"
+          ]
+        },
+        "args": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/semanticExpression"
+          }
+        },
+        "source": {
+          "enum": [
+            "inputs",
+            "result"
+          ]
+        },
+        "pointer": {
+          "type": "string"
+        },
+        "comparator": {
+          "enum": [
+            "equals",
+            "not_equals",
+            "less_than",
+            "less_than_or_equal",
+            "greater_than",
+            "greater_than_or_equal"
+          ]
+        },
+        "order": {
+          "enum": [
+            "ascending",
+            "descending"
+          ]
+        },
+        "index": {
+          "type": "integer",
+          "minimum": -10000,
+          "maximum": 9999
+        },
+        "digits": {
+          "type": "integer",
+          "minimum": -12,
+          "maximum": 12
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "ref"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source",
+              "pointer"
+            ]
+          },
+          "else": {
+            "required": [
+              "args"
+            ]
+          }
+        }
+      ]
+    },
+    "semanticAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assertion_id",
+        "operator",
+        "left",
+        "right"
+      ],
+      "properties": {
+        "assertion_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operator": {
+          "enum": [
+            "equals",
+            "not_equals",
+            "less_than",
+            "less_than_or_equal",
+            "greater_than",
+            "greater_than_or_equal",
+            "set_equals"
+          ]
+        },
+        "left": {
+          "$ref": "#/$defs/semanticExpression"
+        },
+        "right": {
+          "$ref": "#/$defs/semanticExpression"
+        }
+      }
+    },
+    "semanticAssertions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/semanticAssertion"
+      }
     }
   },
   "additionalProperties": false,
@@ -331,6 +470,9 @@
                     "properties": {
                       "result_spec": {
                         "$ref": "#/$defs/resultSpec"
+                      },
+                      "semantic_assertions": {
+                        "$ref": "#/$defs/semanticAssertions"
                       }
                     }
                   }

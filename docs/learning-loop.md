@@ -45,6 +45,9 @@ Built-in gate failure codes are:
 | Code | Meaning |
 |---|---|
 | `result.mismatch` | The proposal result differs from the expected value |
+| `semantic.spec_invalid` | Contract-visible semantic assertions are invalid |
+| `semantic.assertion_failed` | A visible deterministic relation did not hold |
+| `semantic.evaluation_error` | A visible expression could not be evaluated safely |
 | `action.forbidden` | The proposal requests an explicitly forbidden action |
 | `action.not_allowlisted` | The proposal requests an undeclared action |
 | `evidence.duplicate_id` | Evidence identifiers are not unique |

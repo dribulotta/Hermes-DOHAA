@@ -39,6 +39,7 @@ The `v0.1` bootstrap implements:
 - a tamper-evident SQLite event ledger;
 - retry, no-progress termination, and human escalation;
 - structured verifier feedback and stable terminal reason codes;
+- bounded contract-visible semantic assertions for deterministic repair;
 - fail-closed approval checkpoints that preserve the original run identity;
 - source-bound control-plane manifests for resumable approvals;
 - a paired quality-evaluation harness with protected-suite commitments and
