@@ -6,6 +6,7 @@ from .commitment import (
     write_suite_commitment,
 )
 from .models import EvaluationCase, EvaluationSuite, EvaluationSuiteError
+from .protocol import EvaluationProtocol, EvaluationProtocolError, ModelSlot
 from .runner import (
     EvaluationCondition,
     RuntimeFactory,
@@ -17,8 +18,11 @@ from .statistics import analyze_unique_cases, exact_two_sided_sign_test_p
 __all__ = [
     "EvaluationCase",
     "EvaluationCondition",
+    "EvaluationProtocol",
+    "EvaluationProtocolError",
     "EvaluationSuite",
     "EvaluationSuiteError",
+    "ModelSlot",
     "RuntimeFactory",
     "SuiteCommitment",
     "SuiteCommitmentError",

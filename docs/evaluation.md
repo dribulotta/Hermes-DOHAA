@@ -211,6 +211,23 @@ This holdout must not be reused to guide subsequent changes and then presented
 as independent confirmation of those changes. A new confirmation requires a
 new independently frozen holdout.
 
+## Multi-model preregistration
+
+The public
+[multi-model generalization protocol v1](evaluation-protocols/multimodel-generalization-v1.md)
+fixes the model-selection sequence, new-suite shape, execution policy,
+primary analysis, success criteria, and cost guardrails before a new protected
+suite is authored. Validate its canonical JSON without contacting Hermes:
+
+    hermes-dohaa validate-evaluation-protocol \
+      examples/multimodel-evaluation-protocol.json
+
+The protocol requires three model artifacts to be pinned before suite
+authorship and forbids post-freeze substitution. The existing protected
+holdout v3 is explicitly excluded. This preregistration does not authorize an
+evaluation: the multi-model executor and aggregate analysis must be merged and
+frozen first.
+
 ## Freeze a protected pilot
 
 Create the first meaningful pilot outside the public repository. It must have

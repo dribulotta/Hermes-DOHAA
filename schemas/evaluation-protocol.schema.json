@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dribulotta/Hermes-DOHAA/schemas/evaluation-protocol.schema.json",
+  "title": "Hermes-DOHAA multi-model evaluation preregistration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol_id",
+    "description",
+    "status",
+    "conditions",
+    "model_slots",
+    "model_policy",
+    "suite_policy",
+    "execution_policy",
+    "analysis_plan",
+    "success_criteria"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "protocol_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "const": "preregistered"
+    },
+    "conditions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "const": "direct"
+        },
+        {
+          "const": "self_reflection"
+        },
+        {
+          "const": "dohaa"
+        }
+      ],
+      "items": false
+    },
+    "model_slots": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slot_id",
+          "selection_rule"
+        ],
+        "properties": {
+          "slot_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selection_rule": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "model_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_count",
+        "artifact_identity_required",
+        "freeze_before_suite_authorship",
+        "allow_post_freeze_substitution"
+      ],
+      "properties": {
+        "model_count": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 20
+        },
+        "artifact_identity_required": {
+          "const": true
+        },
+        "freeze_before_suite_authorship": {
+          "const": true
+        },
+        "allow_post_freeze_substitution": {
+          "const": false
+        }
+      }
+    },
+    "suite_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_count",
+        "domain_counts",
+        "new_cases_only",
+        "reuse_prior_holdouts",
+        "authoring_after_model_freeze"
+      ],
+      "properties": {
+        "case_count": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 50
+        },
+        "domain_counts": {
+          "type": "object",
+          "minProperties": 3,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 5
+          }
+        },
+        "new_cases_only": {
+          "const": true
+        },
+        "reuse_prior_holdouts": {
+          "const": false
+        },
+        "authoring_after_model_freeze": {
+          "const": true
+        }
+      }
+    },
+    "execution_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repetitions",
+        "condition_order_seed",
+        "sampling_seed",
+        "temperature",
+        "top_p",
+        "reasoning_effort",
+        "timeout_seconds"
+      ],
+      "properties": {
+        "repetitions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "condition_order_seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "sampling_seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "top_p": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "reasoning_effort": {
+          "enum": [
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        },
+        "timeout_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 3600
+        }
+      }
+    },
+    "analysis_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary_comparison",
+        "primary_metric",
+        "global_unit",
+        "global_aggregation",
+        "per_model_test",
+        "alpha",
+        "domain_analysis",
+        "multiple_comparison_claims",
+        "runtime_failures"
+      ],
+      "properties": {
+        "primary_comparison": {
+          "const": "dohaa_vs_direct"
+        },
+        "primary_metric": {
+          "const": "final_strict_pass"
+        },
+        "global_unit": {
+          "const": "unique_case"
+        },
+        "global_aggregation": {
+          "const": "mean_across_models_then_sign"
+        },
+        "per_model_test": {
+          "const": "exact_two_sided_sign_test"
+        },
+        "alpha": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "domain_analysis": {
+          "const": "exploratory"
+        },
+        "multiple_comparison_claims": {
+          "const": false
+        },
+        "runtime_failures": {
+          "const": "count_as_failures"
+        }
+      }
+    },
+    "success_criteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_models_with_positive_delta",
+        "maximum_models_with_negative_delta",
+        "require_global_positive_delta",
+        "require_global_wins_exceed_losses",
+        "require_primary_p_below_alpha",
+        "maximum_regressions",
+        "maximum_dohaa_average_runtime_calls",
+        "maximum_dohaa_to_direct_token_ratio"
+      ],
+      "properties": {
+        "minimum_models_with_positive_delta": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximum_models_with_negative_delta": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "require_global_positive_delta": {
+          "const": true
+        },
+        "require_global_wins_exceed_losses": {
+          "const": true
+        },
+        "require_primary_p_below_alpha": {
+          "const": true
+        },
+        "maximum_regressions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximum_dohaa_average_runtime_calls": {
+          "type": "number",
+          "minimum": 1
+        },
+        "maximum_dohaa_to_direct_token_ratio": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

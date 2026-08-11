@@ -121,6 +121,11 @@ wins and no losses. This bounded result is not evidence of universal
 superiority; see the
 [protected semantic holdout v3 report](docs/evaluation-results/protected-semantic-holdout-v3.md).
 
+The next independent evaluation is governed by a public
+[multi-model preregistration](docs/evaluation-protocols/multimodel-generalization-v1.md).
+It requires new cases and frozen model identities; protected holdout v3 is not
+eligible for reuse.
+
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
 ## Deployment and operations

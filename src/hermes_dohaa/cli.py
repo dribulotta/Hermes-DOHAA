@@ -31,6 +31,8 @@ from hermes_dohaa.controller.engine import (
 )
 from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
 from hermes_dohaa.evaluation import (
+    EvaluationProtocol,
+    EvaluationProtocolError,
     EvaluationSuite,
     EvaluationSuiteError,
     SuiteCommitment,
@@ -125,6 +127,12 @@ def build_parser() -> argparse.ArgumentParser:
     freeze_suite.add_argument("--output", type=Path, required=True)
     freeze_suite.add_argument("--protocol-commit", required=True)
 
+    validate_protocol = subparsers.add_parser(
+        "validate-evaluation-protocol",
+        help="Validate and hash a multi-model evaluation preregistration",
+    )
+    validate_protocol.add_argument("protocol", type=Path)
+
     verify_ledger = subparsers.add_parser(
         "verify-ledger",
         help="Verify an evidence ledger offline without modifying it",
@@ -147,6 +155,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_evaluate(args)
     if args.command == "freeze-suite":
         return _run_freeze_suite(args)
+    if args.command == "validate-evaluation-protocol":
+        return _run_validate_evaluation_protocol(args)
 
     try:
         contract = TaskContract.from_json_file(args.contract)
@@ -360,6 +370,30 @@ def _run_freeze_suite(args: argparse.Namespace) -> int:
         "commitment": commitment.to_dict(),
         "commitment_sha256": commitment.sha256(),
         "output": str(args.output),
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _run_validate_evaluation_protocol(args: argparse.Namespace) -> int:
+    try:
+        protocol = EvaluationProtocol.from_json_file(args.protocol)
+    except (EvaluationProtocolError, OSError, ValueError) as exc:
+        payload = {
+            "valid": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    payload = {
+        "valid": True,
+        "protocol_id": protocol.protocol_id,
+        "protocol_sha256": protocol.sha256(),
+        "model_slots": len(protocol.model_slots),
+        "case_count": protocol.suite_policy["case_count"],
+        "domain_counts": dict(protocol.suite_policy["domain_counts"]),
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
