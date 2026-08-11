@@ -224,9 +224,35 @@ suite is authored. Validate its canonical JSON without contacting Hermes:
 
 The protocol requires three model artifacts to be pinned before suite
 authorship and forbids post-freeze substitution. The existing protected
-holdout v3 is explicitly excluded. This preregistration does not authorize an
-evaluation: the multi-model executor and aggregate analysis must be merged and
-frozen first.
+holdout v3 is explicitly excluded. The executor enforces the frozen order and
+computes the preregistered unique-case aggregate, but execution remains
+unauthorized until its implementation commit and the exact model manifest are
+frozen.
+
+Adapt the sanitized manifest example outside the repository, then freeze it:
+
+    hermes-dohaa freeze-model-manifest \
+      /protected/model-manifest-draft.json \
+      --protocol examples/multimodel-evaluation-protocol.json \
+      --output /protected/model-manifest.json
+
+After the manifest is frozen, author and freeze the new 48-case suite. Run the
+complete experiment without policy overrides:
+
+    HERMES_API_KEY="$(cat /path/to/runtime-api.key)" \
+    hermes-dohaa evaluate-multimodel /protected/holdout.json \
+      --suite-commitment /protected/holdout.commitment.json \
+      --protocol examples/multimodel-evaluation-protocol.json \
+      --model-manifest /protected/model-manifest.json \
+      --hermes-url http://192.0.2.106:8642/v1 \
+      --output /protected/multimodel-result.json
+
+The executor validates all frozen identities and suite counts before any model
+call. It creates one private non-overwriting artifact, retains runtime failures
+as failed observations, averages paired pass indicators across models before
+the global sign test, and evaluates every success criterion. Missing usage for
+any direct or DOHAA call makes the token criterion `unevaluable`; an
+unevaluable criterion cannot produce an overall pass.
 
 ## Freeze a protected pilot
 

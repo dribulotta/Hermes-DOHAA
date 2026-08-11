@@ -44,6 +44,8 @@ The `v0.1` bootstrap implements:
 - source-bound control-plane manifests for resumable approvals;
 - a paired quality-evaluation harness with protected-suite commitments and
   unique-case statistical analysis;
+- a preregistered multi-model executor with frozen artifact identities,
+  unique-case aggregation, and automatic success-criterion assessment;
 - a standard-library-only runtime with unit and integration tests.
 
 ```mermaid

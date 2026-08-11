@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "protocol_id": "multimodel-generalization-v1",
+  "protocol_sha256": "e798591ea38f6350b3c0a0975293c0978ae01cf83ad87f449cd9ff91f9558d7b",
+  "models": [
+    {
+      "slot_id": "qwen-35b-a3b-primary",
+      "model_alias": "replace-with-primary-alias",
+      "model_artifact_id": "replace-with-primary-artifact-digest",
+      "provider": "replace-with-provider",
+      "backend": "replace-with-backend",
+      "backend_version": "replace-with-version",
+      "architecture": {
+        "family": "replace-with-family",
+        "num_experts": 8
+      },
+      "context_length": 64000,
+      "quantization": "replace-with-quantization",
+      "server_config_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "slot_id": "qwen-27b-comparator",
+      "model_alias": "replace-with-qwen-comparator-alias",
+      "model_artifact_id": "replace-with-qwen-comparator-artifact-digest",
+      "provider": "replace-with-provider",
+      "backend": "replace-with-backend",
+      "backend_version": "replace-with-version",
+      "architecture": {
+        "family": "replace-with-family",
+        "num_experts": 1
+      },
+      "context_length": 64000,
+      "quantization": "replace-with-quantization",
+      "server_config_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "slot_id": "cross-family-comparator",
+      "model_alias": "replace-with-cross-family-alias",
+      "model_artifact_id": "replace-with-cross-family-artifact-digest",
+      "provider": "replace-with-provider",
+      "backend": "replace-with-backend",
+      "backend_version": "replace-with-version",
+      "architecture": {
+        "family": "replace-with-cross-family",
+        "num_experts": 1
+      },
+      "context_length": 64000,
+      "quantization": "replace-with-quantization",
+      "server_config_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}
