@@ -40,8 +40,10 @@ from hermes_dohaa.evaluation import (
     MultimodelEvaluationError,
     SuiteCommitment,
     SuiteCommitmentError,
+    aggregate_model_slot_checkpoints,
     freeze_model_manifest,
     run_comparative_evaluation,
+    run_model_slot_evaluation,
     run_multimodel_evaluation,
     write_evaluation_result,
     write_model_manifest,
@@ -162,6 +164,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Shared OpenAI-compatible endpoint for the frozen model aliases",
     )
 
+    model_slot = subparsers.add_parser(
+        "evaluate-model-slot",
+        help="Run exactly one preregistered model and write a private checkpoint",
+    )
+    model_slot.add_argument("suite", type=Path)
+    model_slot.add_argument("--suite-commitment", type=Path, required=True)
+    model_slot.add_argument("--protocol", type=Path, required=True)
+    model_slot.add_argument("--model-manifest", type=Path, required=True)
+    model_slot.add_argument("--slot-id", required=True)
+    model_slot.add_argument("--execution-code-commit", required=True)
+    model_slot.add_argument("--output", type=Path, required=True)
+    model_slot.add_argument("--hermes-url", default="http://127.0.0.1:8642")
+
+    aggregate_slots = subparsers.add_parser(
+        "aggregate-multimodel",
+        help="Verify and aggregate private model-slot checkpoints offline",
+    )
+    aggregate_slots.add_argument("suite", type=Path)
+    aggregate_slots.add_argument("checkpoints", type=Path, nargs="+")
+    aggregate_slots.add_argument("--suite-commitment", type=Path, required=True)
+    aggregate_slots.add_argument("--protocol", type=Path, required=True)
+    aggregate_slots.add_argument("--model-manifest", type=Path, required=True)
+    aggregate_slots.add_argument("--execution-code-commit", required=True)
+    aggregate_slots.add_argument("--output", type=Path, required=True)
+
     verify_ledger = subparsers.add_parser(
         "verify-ledger",
         help="Verify an evidence ledger offline without modifying it",
@@ -190,6 +217,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_freeze_model_manifest(args)
     if args.command == "evaluate-multimodel":
         return _run_evaluate_multimodel(args)
+    if args.command == "evaluate-model-slot":
+        return _run_evaluate_model_slot(args)
+    if args.command == "aggregate-multimodel":
+        return _run_aggregate_multimodel(args)
 
     try:
         contract = TaskContract.from_json_file(args.contract)
@@ -535,6 +566,100 @@ def _run_evaluate_multimodel(args: argparse.Namespace) -> int:
         "success_assessment": result["success_assessment"],
     }
     print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
+def _run_evaluate_model_slot(args: argparse.Namespace) -> int:
+    try:
+        if args.output.exists():
+            raise FileExistsError(f"checkpoint output already exists: {args.output}")
+        protocol = EvaluationProtocol.from_json_file(args.protocol)
+        manifest = ModelManifest.from_json_file(args.model_manifest)
+        suite = EvaluationSuite.from_json_file(args.suite)
+        commitment = SuiteCommitment.from_json_file(args.suite_commitment)
+        execution = protocol.execution_policy
+
+        def runtime_factory_builder(model):
+            def runtime_factory(contract, session_id, trial_sampling_seed):
+                del contract
+                return HermesApiRuntime(
+                    base_url=args.hermes_url,
+                    model=model.model_alias,
+                    timeout_seconds=execution["timeout_seconds"],
+                    session_id=session_id,
+                    reasoning_effort=execution["reasoning_effort"],
+                    temperature=execution["temperature"],
+                    top_p=execution["top_p"],
+                    sampling_seed=trial_sampling_seed,
+                )
+            return runtime_factory
+
+        checkpoint = run_model_slot_evaluation(
+            suite, commitment, protocol, manifest, args.slot_id,
+            runtime_factory_builder,
+            runtime_context={
+                "adapter": "hermes_api",
+                "hermes_dohaa_version": __version__,
+                "hermes_url": args.hermes_url,
+            },
+            execution_code_commit=args.execution_code_commit,
+        )
+        write_evaluation_result(args.output, checkpoint)
+    except (
+        EvaluationProtocolError, EvaluationSuiteError, ModelManifestError,
+        MultimodelEvaluationError, SuiteCommitmentError, OSError, ValueError,
+    ) as exc:
+        print(json.dumps({"status": "failed", "error_type": type(exc).__name__,
+                          "error": str(exc)}, ensure_ascii=False))
+        return 2
+    print(json.dumps({
+        "status": "completed",
+        "checkpoint_id": checkpoint["checkpoint_id"],
+        "protocol_id": checkpoint["protocol_id"],
+        "slot_id": checkpoint["slot_id"],
+        "model_artifact_id": checkpoint["model_artifact_id"],
+        "output": str(args.output),
+    }, ensure_ascii=False))
+    return 0
+
+
+def _run_aggregate_multimodel(args: argparse.Namespace) -> int:
+    try:
+        if args.output.exists():
+            raise FileExistsError(f"aggregate output already exists: {args.output}")
+        protocol = EvaluationProtocol.from_json_file(args.protocol)
+        manifest = ModelManifest.from_json_file(args.model_manifest)
+        suite = EvaluationSuite.from_json_file(args.suite)
+        commitment = SuiteCommitment.from_json_file(args.suite_commitment)
+        checkpoints = []
+        for path in args.checkpoints:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("checkpoint root must be an object")
+            checkpoints.append(value)
+        result = aggregate_model_slot_checkpoints(
+            suite, commitment, protocol, manifest, checkpoints,
+            execution_code_commit=args.execution_code_commit,
+        )
+        write_evaluation_result(args.output, result)
+    except (
+        EvaluationProtocolError, EvaluationSuiteError, ModelManifestError,
+        MultimodelEvaluationError, SuiteCommitmentError, OSError, ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        print(json.dumps({"status": "failed", "error_type": type(exc).__name__,
+                          "error": str(exc)}, ensure_ascii=False))
+        return 2
+    print(json.dumps({
+        "status": "completed",
+        "evaluation_id": result["evaluation_id"],
+        "protocol_id": result["protocol_id"],
+        "model_manifest_sha256": result["model_manifest_sha256"],
+        "suite_id": result["suite_id"],
+        "output": str(args.output),
+        "aggregate_analysis": result["aggregate_analysis"],
+        "success_assessment": result["success_assessment"],
+    }, ensure_ascii=False))
     return 0
 
 

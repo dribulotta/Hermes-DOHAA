@@ -216,6 +216,27 @@ After any Hermes, Python, dependency, model, prompt, or policy change, repeat:
 - bounded repair-loop test;
 - reboot certification.
 
+## Model-residency barrier for multi-model evaluation
+
+Automatic model eviction is not proof that a prior artifact has left memory.
+Overlapping residency can introduce paging and invalidate latency comparisons.
+For capacity-constrained hosts, use the isolated slot commands documented in
+`evaluation.md` and apply this operational sequence:
+
+1. unload all model artifacts before beginning the experiment;
+2. execute exactly one model slot;
+3. confirm that its private checkpoint was written successfully;
+4. unload that model using the infrastructure's external procedure;
+5. verify that memory has been released;
+6. repeat steps 2--5 for the next slot in protocol order;
+7. aggregate every checkpoint only after all slots are complete.
+
+Do not inspect individual outcomes before all slots finish. If a purely
+operational failure requires repeating a slot, document the failure and the
+repeat without changing any frozen policy. Never publish checkpoints. This
+barrier does not change the statistical protocol or acceptance logic; it only
+ensures that each model's measurements come from an isolated process.
+
 ## Secret rotation
 
 To rotate the runtime API key:
