@@ -3,6 +3,7 @@ import json
 import stat
 import tempfile
 import unittest
+import copy
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -15,9 +16,11 @@ from hermes_dohaa.evaluation import (
     ModelManifestError,
     MultimodelEvaluationError,
     SuiteCommitment,
+    aggregate_model_slot_checkpoints,
     analyze_multimodel_results,
     assess_success,
     run_multimodel_evaluation,
+    run_model_slot_evaluation,
     write_model_manifest,
     write_suite_commitment,
 )
@@ -425,6 +428,170 @@ class MultimodelEvaluationTests(unittest.TestCase):
         self.assertEqual(len(example["models"]), 3)
         with self.assertRaisesRegex(ModelManifestError, "placeholder"):
             ModelManifest.create(protocol(), example["models"])
+
+
+class IsolatedModelSlotTests(unittest.TestCase):
+    COMMIT = "d" * 40
+
+    def setUp(self):
+        self.protocol = protocol()
+        self.manifest = ModelManifest.create(self.protocol, model_dicts())
+        self.suite = protected_suite()
+        self.commitment = SuiteCommitment.create(
+            self.suite, protocol_commit="e" * 40
+        )
+
+    def checkpoint(self, slot_id, *, built=None):
+        def builder(model):
+            if built is not None:
+                built.append(model.model_alias)
+            return lambda contract, session_id, seed: ExactRuntime()
+        return run_model_slot_evaluation(
+            self.suite, self.commitment, self.protocol, self.manifest,
+            slot_id, builder, runtime_context={"adapter": "synthetic"},
+            execution_code_commit=self.COMMIT,
+        )
+
+    def checkpoints(self):
+        return [self.checkpoint(slot.slot_id) for slot in self.protocol.model_slots]
+
+    def test_slot_builds_and_executes_only_selected_alias(self):
+        built = []
+        selected = self.manifest.models[1]
+        checkpoint = self.checkpoint(selected.slot_id, built=built)
+        self.assertEqual(built, [selected.model_alias])
+        self.assertEqual(checkpoint["model_alias"], selected.model_alias)
+        self.assertEqual(checkpoint["evaluation"]["runtime_policy"]["model_alias"],
+                         selected.model_alias)
+
+    def test_unknown_slot_and_invalid_commit_fail_before_builder(self):
+        called = []
+        def builder(model):
+            called.append(model)
+            raise AssertionError("must not build")
+        with self.assertRaisesRegex(MultimodelEvaluationError, "unknown"):
+            run_model_slot_evaluation(
+                self.suite, self.commitment, self.protocol, self.manifest,
+                "absent", builder, execution_code_commit=self.COMMIT,
+            )
+        with self.assertRaisesRegex(MultimodelEvaluationError, "40-character"):
+            run_model_slot_evaluation(
+                self.suite, self.commitment, self.protocol, self.manifest,
+                self.manifest.models[0].slot_id, builder,
+                execution_code_commit="ABC123",
+            )
+        self.assertEqual(called, [])
+
+    def test_checkpoint_round_trip_and_mutable_values_are_detached(self):
+        context = {"nested": {"items": [1]}}
+        checkpoint = run_model_slot_evaluation(
+            self.suite, self.commitment, self.protocol, self.manifest,
+            self.manifest.models[0].slot_id,
+            lambda model: (lambda contract, session_id, seed: ExactRuntime()),
+            runtime_context=context, execution_code_commit=self.COMMIT,
+        )
+        context["nested"]["items"].append(2)
+        self.assertEqual(checkpoint["runtime_policy"]["nested"]["items"], [1])
+        self.assertEqual(json.loads(json.dumps(checkpoint)), checkpoint)
+
+    def test_three_checkpoints_aggregate_in_protocol_order_without_runtime(self):
+        checkpoints = self.checkpoints()
+        result = aggregate_model_slot_checkpoints(
+            self.suite, self.commitment, self.protocol, self.manifest,
+            checkpoints, execution_code_commit=self.COMMIT,
+        )
+        self.assertEqual([run["slot_id"] for run in result["model_runs"]],
+                         [slot.slot_id for slot in self.protocol.model_slots])
+        self.assertEqual(len(result["source_checkpoints"]), 3)
+        self.assertTrue(all(len(source["checkpoint_sha256"]) == 64
+                            for source in result["source_checkpoints"]))
+
+    def test_missing_extra_duplicate_and_disordered_slots_are_rejected(self):
+        checkpoints = self.checkpoints()
+        variants = [
+            checkpoints[:-1],
+            checkpoints + [checkpoints[0]],
+            [checkpoints[0], checkpoints[0], checkpoints[2]],
+            [checkpoints[1], checkpoints[0], checkpoints[2]],
+        ]
+        for value in variants:
+            with self.subTest(slots=[item["slot_id"] for item in value]):
+                with self.assertRaises(MultimodelEvaluationError):
+                    aggregate_model_slot_checkpoints(
+                        self.suite, self.commitment, self.protocol,
+                        self.manifest, value,
+                        execution_code_commit=self.COMMIT,
+                    )
+
+    def test_tampered_checkpoint_fields_are_rejected(self):
+        checkpoints = self.checkpoints()
+        mutations = {
+            "protocol_sha256": "0" * 64,
+            "model_manifest_sha256": "0" * 64,
+            "suite_sha256": "0" * 64,
+            "suite_commitment_sha256": "0" * 64,
+            "model_alias": "tampered-alias",
+            "model_artifact_id": "tampered-artifact",
+            "execution_code_commit": "f" * 40,
+            "status": "incomplete",
+            "schema_version": "2.0",
+            "checkpoint_type": "other",
+        }
+        for field, value in mutations.items():
+            altered = copy.deepcopy(checkpoints)
+            altered[0][field] = value
+            with self.subTest(field=field):
+                with self.assertRaises(MultimodelEvaluationError):
+                    aggregate_model_slot_checkpoints(
+                        self.suite, self.commitment, self.protocol,
+                        self.manifest, altered,
+                        execution_code_commit=self.COMMIT,
+                    )
+        altered = copy.deepcopy(checkpoints)
+        altered[0]["runtime_policy"]["temperature"] = 2.0
+        with self.assertRaises(MultimodelEvaluationError):
+            aggregate_model_slot_checkpoints(
+                self.suite, self.commitment, self.protocol, self.manifest,
+                altered, execution_code_commit=self.COMMIT,
+            )
+
+    def test_checkpoint_aggregation_matches_monolithic_results(self):
+        def builder(model):
+            return lambda contract, session_id, seed: ExactRuntime()
+        def deterministic(suite, factory, **kwargs):
+            del suite, factory
+            evaluation = model_run("unused", [True] * 48, [True] * 48)[
+                "evaluation"
+            ]
+            evaluation["runtime_policy"] = copy.deepcopy(kwargs["runtime_policy"])
+            return evaluation
+        with patch(
+            "hermes_dohaa.evaluation.multimodel.run_comparative_evaluation",
+            side_effect=deterministic,
+        ):
+            monolithic = run_multimodel_evaluation(
+                self.suite, self.commitment, self.protocol, self.manifest,
+                builder, runtime_context={"adapter": "synthetic"},
+            )
+            isolated = aggregate_model_slot_checkpoints(
+                self.suite, self.commitment, self.protocol, self.manifest,
+                self.checkpoints(), execution_code_commit=self.COMMIT,
+            )
+        self.assertEqual(isolated["model_runs"], monolithic["model_runs"])
+        self.assertEqual(isolated["aggregate_analysis"],
+                         monolithic["aggregate_analysis"])
+        self.assertEqual(isolated["success_assessment"],
+                         monolithic["success_assessment"])
+
+    def test_private_checkpoint_writer_rejects_overwrite(self):
+        checkpoint = self.checkpoint(self.manifest.models[0].slot_id)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "checkpoint.json"
+            from hermes_dohaa.evaluation import write_evaluation_result
+            write_evaluation_result(path, checkpoint)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            with self.assertRaises(FileExistsError):
+                write_evaluation_result(path, checkpoint)
 
 
 if __name__ == "__main__":

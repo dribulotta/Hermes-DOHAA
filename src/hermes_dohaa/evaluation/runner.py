@@ -183,7 +183,10 @@ def run_comparative_evaluation(
 
 def write_evaluation_result(path: str | Path, result: dict[str, Any]) -> None:
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.parent.is_dir():
+        raise FileNotFoundError(
+            f"evaluation output directory does not exist: {target.parent}"
+        )
     payload = json.dumps(
         result,
         ensure_ascii=False,

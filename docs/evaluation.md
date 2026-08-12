@@ -254,6 +254,44 @@ the global sign test, and evaluates every success criterion. Missing usage for
 any direct or DOHAA call makes the token criterion `unevaluable`; an
 unevaluable criterion cannot produce an overall pass.
 
+### Isolated, resumable model slots
+
+The monolithic `evaluate-multimodel` command remains compatible, but the
+infrastructure must independently guarantee that only the selected model is
+resident. Multiple resident artifacts can contaminate latency measurements
+and cause paging when their combined working sets exceed RAM. An automatic
+eviction setting is not a verifiable isolation barrier.
+
+When the artifacts cannot safely be resident together, run one process per
+slot and record the implementation commit that is executing it:
+
+    hermes-dohaa evaluate-model-slot /private/holdout.json \
+      --suite-commitment /private/holdout.commitment.json \
+      --protocol examples/multimodel-evaluation-protocol.json \
+      --model-manifest /private/model-manifest.json \
+      --slot-id MODEL_SLOT \
+      --execution-code-commit FULL_40_CHARACTER_GIT_SHA \
+      --output /private/MODEL_SLOT.checkpoint.json
+
+After every declared slot has completed, aggregate them offline in the exact
+protocol order:
+
+    hermes-dohaa aggregate-multimodel /private/holdout.json \
+      /private/slot-1.checkpoint.json \
+      /private/slot-2.checkpoint.json \
+      /private/slot-3.checkpoint.json \
+      --suite-commitment /private/holdout.commitment.json \
+      --protocol examples/multimodel-evaluation-protocol.json \
+      --model-manifest /private/model-manifest.json \
+      --execution-code-commit FULL_40_CHARACTER_GIT_SHA \
+      --output /private/multimodel-result.json
+
+Both checkpoint and aggregate files are private, non-overwriting artifacts
+created with mode `0600`; do not publish them. Aggregation verifies their
+embedded identities and policies and performs no runtime calls. This execution
+mode changes orchestration only: it preserves the frozen sampling, conditions,
+repetitions, analysis, and acceptance logic.
+
 ## Freeze a protected pilot
 
 Create the first meaningful pilot outside the public repository. It must have

@@ -16,8 +16,10 @@ from .model_manifest import (
 from .multimodel import (
     MultimodelEvaluationError,
     RuntimeFactoryBuilder,
+    aggregate_model_slot_checkpoints,
     analyze_multimodel_results,
     assess_success,
+    run_model_slot_evaluation,
     run_multimodel_evaluation,
     validate_multimodel_inputs,
 )
@@ -49,9 +51,11 @@ __all__ = [
     "analyze_unique_cases",
     "exact_two_sided_sign_test_p",
     "freeze_model_manifest",
+    "aggregate_model_slot_checkpoints",
     "analyze_multimodel_results",
     "assess_success",
     "run_comparative_evaluation",
+    "run_model_slot_evaluation",
     "run_multimodel_evaluation",
     "validate_multimodel_inputs",
     "write_evaluation_result",

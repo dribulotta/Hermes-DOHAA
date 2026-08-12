@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
@@ -21,6 +23,16 @@ class MultimodelEvaluationError(ValueError):
 
 
 RuntimeFactoryBuilder = Callable[[ModelArtifact], RuntimeFactory]
+_GIT_SHA1 = re.compile(r"[0-9a-f]{40}")
+_CHECKPOINT_FIELDS = {
+    "schema_version", "checkpoint_type", "checkpoint_id", "status",
+    "execution_mode", "execution_code_commit", "protocol_id",
+    "protocol_sha256", "model_manifest_id", "model_manifest_sha256",
+    "suite_id", "suite_sha256", "suite_commitment_id",
+    "suite_commitment_sha256", "slot_id", "model_alias",
+    "model_artifact_id", "started_at", "completed_at", "runtime_policy",
+    "evaluation",
+}
 
 
 def run_multimodel_evaluation(
@@ -46,24 +58,7 @@ def run_multimodel_evaluation(
 
     for model in model_manifest.models:
         runtime_factory = runtime_factory_builder(model)
-        runtime_policy = {
-            **context,
-            "model_slot": model.slot_id,
-            "model_alias": model.model_alias,
-            "model_artifact_id": model.model_artifact_id,
-            "provider": model.provider,
-            "backend": model.backend,
-            "backend_version": model.backend_version,
-            "architecture": dict(model.architecture),
-            "context_length": model.context_length,
-            "quantization": model.quantization,
-            "server_config_sha256": model.server_config_sha256,
-            "reasoning_effort": execution["reasoning_effort"],
-            "temperature": execution["temperature"],
-            "top_p": execution["top_p"],
-            "sampling_seed": execution["sampling_seed"],
-            "timeout_seconds": execution["timeout_seconds"],
-        }
+        runtime_policy = _runtime_policy(model, execution, context)
         evaluation = run_comparative_evaluation(
             suite,
             runtime_factory,
@@ -100,6 +95,163 @@ def run_multimodel_evaluation(
         "model_runs": model_runs,
         "aggregate_analysis": aggregate,
         "success_assessment": assess_success(protocol, model_runs, aggregate),
+    }
+
+
+def run_model_slot_evaluation(
+    suite: EvaluationSuite,
+    suite_commitment: SuiteCommitment,
+    protocol: EvaluationProtocol,
+    model_manifest: ModelManifest,
+    slot_id: str,
+    runtime_factory_builder: RuntimeFactoryBuilder,
+    *,
+    runtime_context: Mapping[str, Any] | None = None,
+    execution_code_commit: str,
+) -> dict[str, Any]:
+    """Run one validated model slot and return a self-verifying checkpoint."""
+    validate_multimodel_inputs(suite, suite_commitment, protocol, model_manifest)
+    commit = _execution_commit(execution_code_commit)
+    models = [model for model in model_manifest.models if model.slot_id == slot_id]
+    if len(models) != 1:
+        raise MultimodelEvaluationError(f"unknown model slot: {slot_id}")
+    model = models[0]
+    execution = protocol.execution_policy
+    policy = _runtime_policy(
+        model, execution, _json_clone(dict(runtime_context or {}))
+    )
+    started_at = _utc_now()
+    evaluation = run_comparative_evaluation(
+        suite,
+        runtime_factory_builder(model),
+        seed=execution["condition_order_seed"],
+        repetitions=execution["repetitions"],
+        sampling_seed=execution["sampling_seed"],
+        runtime_policy=policy,
+        suite_commitment=suite_commitment.to_dict(),
+    )
+    checkpoint = {
+        "schema_version": "1.0",
+        "checkpoint_type": "multimodel_model_slot",
+        "status": "completed",
+        "execution_mode": "isolated_model_slot",
+        "execution_code_commit": commit,
+        "protocol_id": protocol.protocol_id,
+        "protocol_sha256": protocol.sha256(),
+        "model_manifest_id": model_manifest.manifest_id,
+        "model_manifest_sha256": model_manifest.sha256(),
+        "suite_id": suite.suite_id,
+        "suite_sha256": suite.sha256(),
+        "suite_commitment_id": suite_commitment.commitment_id,
+        "suite_commitment_sha256": suite_commitment.sha256(),
+        "slot_id": model.slot_id,
+        "model_alias": model.model_alias,
+        "model_artifact_id": model.model_artifact_id,
+        "started_at": started_at,
+        "completed_at": _utc_now(),
+        "runtime_policy": policy,
+        "evaluation": evaluation,
+    }
+    checkpoint = _json_clone(checkpoint)
+    checkpoint["checkpoint_id"] = _checkpoint_identity(checkpoint)
+    return _json_clone(checkpoint)
+
+
+def aggregate_model_slot_checkpoints(
+    suite: EvaluationSuite,
+    suite_commitment: SuiteCommitment,
+    protocol: EvaluationProtocol,
+    model_manifest: ModelManifest,
+    checkpoints: list[Mapping[str, Any]],
+    *,
+    execution_code_commit: str,
+) -> dict[str, Any]:
+    """Verify and aggregate completed slots without accessing a runtime."""
+    validate_multimodel_inputs(suite, suite_commitment, protocol, model_manifest)
+    commit = _execution_commit(execution_code_commit)
+    expected_slots = [slot.slot_id for slot in protocol.model_slots]
+    if len(checkpoints) != len(expected_slots):
+        raise MultimodelEvaluationError(
+            "checkpoint count does not match the protocol slots"
+        )
+    canonical = [_canonical_checkpoint(item) for item in checkpoints]
+    actual_slots = [item.get("slot_id") for item in canonical]
+    if actual_slots != expected_slots:
+        if len(actual_slots) != len(set(actual_slots)):
+            raise MultimodelEvaluationError("duplicate model-slot checkpoint")
+        raise MultimodelEvaluationError(
+            "checkpoints must match the protocol slot order"
+        )
+
+    model_runs = []
+    sources = []
+    for checkpoint, model in zip(canonical, model_manifest.models):
+        expected = {
+            "schema_version": "1.0",
+            "checkpoint_type": "multimodel_model_slot",
+            "status": "completed",
+            "execution_mode": "isolated_model_slot",
+            "execution_code_commit": commit,
+            "protocol_id": protocol.protocol_id,
+            "protocol_sha256": protocol.sha256(),
+            "model_manifest_id": model_manifest.manifest_id,
+            "model_manifest_sha256": model_manifest.sha256(),
+            "suite_id": suite.suite_id,
+            "suite_sha256": suite.sha256(),
+            "suite_commitment_id": suite_commitment.commitment_id,
+            "suite_commitment_sha256": suite_commitment.sha256(),
+            "slot_id": model.slot_id,
+            "model_alias": model.model_alias,
+            "model_artifact_id": model.model_artifact_id,
+        }
+        mismatches = [key for key, value in expected.items()
+                      if checkpoint.get(key) != value]
+        policy = _runtime_policy(model, protocol.execution_policy,
+                                 _runtime_context(checkpoint["runtime_policy"]))
+        if checkpoint["runtime_policy"] != policy:
+            mismatches.append("runtime_policy")
+        if checkpoint["checkpoint_id"] != _checkpoint_identity(checkpoint):
+            mismatches.append("checkpoint_id")
+        if mismatches:
+            raise MultimodelEvaluationError(
+                "checkpoint identity mismatch: " + ", ".join(mismatches)
+            )
+        model_runs.append({
+            "slot_id": model.slot_id,
+            "model_alias": model.model_alias,
+            "model_artifact_id": model.model_artifact_id,
+            "evaluation": _json_clone(checkpoint["evaluation"]),
+        })
+        sources.append({
+            "slot_id": model.slot_id,
+            "checkpoint_id": checkpoint["checkpoint_id"],
+            "checkpoint_sha256": _sha256(checkpoint),
+        })
+    aggregate = analyze_multimodel_results(protocol, model_runs)
+    return {
+        "schema_version": "1.0",
+        "evaluation_id": str(uuid4()),
+        "status": "completed",
+        "execution_mode": "isolated_model_slots",
+        "execution_code_commit": commit,
+        "protocol_id": protocol.protocol_id,
+        "protocol_sha256": protocol.sha256(),
+        "model_manifest": model_manifest.to_dict(),
+        "model_manifest_sha256": model_manifest.sha256(),
+        "suite_id": suite.suite_id,
+        "suite_sha256": suite.sha256(),
+        "suite_commitment": suite_commitment.to_dict(),
+        "suite_commitment_sha256": suite_commitment.sha256(),
+        "started_at": min(
+            canonical, key=lambda item: datetime.fromisoformat(item["started_at"])
+        )["started_at"],
+        "completed_at": max(
+            canonical, key=lambda item: datetime.fromisoformat(item["completed_at"])
+        )["completed_at"],
+        "model_runs": model_runs,
+        "aggregate_analysis": aggregate,
+        "success_assessment": assess_success(protocol, model_runs, aggregate),
+        "source_checkpoints": sources,
     }
 
 
@@ -492,6 +644,92 @@ def _json_clone(value: Any) -> Any:
         raise MultimodelEvaluationError(
             f"runtime context must be canonical JSON: {exc}"
         ) from exc
+
+
+def _runtime_policy(
+    model: ModelArtifact,
+    execution: Mapping[str, Any],
+    context: Mapping[str, Any],
+) -> dict[str, Any]:
+    return _json_clone({
+        **context,
+        "model_slot": model.slot_id,
+        "model_alias": model.model_alias,
+        "model_artifact_id": model.model_artifact_id,
+        "provider": model.provider,
+        "backend": model.backend,
+        "backend_version": model.backend_version,
+        "architecture": dict(model.architecture),
+        "context_length": model.context_length,
+        "quantization": model.quantization,
+        "server_config_sha256": model.server_config_sha256,
+        "reasoning_effort": execution["reasoning_effort"],
+        "temperature": execution["temperature"],
+        "top_p": execution["top_p"],
+        "sampling_seed": execution["sampling_seed"],
+        "timeout_seconds": execution["timeout_seconds"],
+    })
+
+
+def _runtime_context(policy: Mapping[str, Any]) -> dict[str, Any]:
+    reserved = {
+        "model_slot", "model_alias", "model_artifact_id", "provider",
+        "backend", "backend_version", "architecture", "context_length",
+        "quantization", "server_config_sha256", "reasoning_effort",
+        "temperature", "top_p", "sampling_seed", "timeout_seconds",
+    }
+    return {key: _json_clone(value) for key, value in policy.items()
+            if key not in reserved}
+
+
+def _execution_commit(value: str) -> str:
+    if not isinstance(value, str) or _GIT_SHA1.fullmatch(value) is None:
+        raise MultimodelEvaluationError(
+            "execution_code_commit must be a full lowercase 40-character Git SHA-1"
+        )
+    return value
+
+
+def _sha256(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _checkpoint_identity(checkpoint: Mapping[str, Any]) -> str:
+    return _sha256({key: value for key, value in checkpoint.items()
+                    if key != "checkpoint_id"})
+
+
+def _canonical_checkpoint(value: Mapping[str, Any]) -> dict[str, Any]:
+    if type(value) is not dict or set(value) != _CHECKPOINT_FIELDS:
+        raise MultimodelEvaluationError(
+            "checkpoint must be a complete canonical JSON object"
+        )
+    clone = _json_clone(value)
+    if clone != value:
+        raise MultimodelEvaluationError("checkpoint content is not canonical JSON")
+    for field in ("runtime_policy", "evaluation"):
+        if type(clone[field]) is not dict:
+            raise MultimodelEvaluationError(f"checkpoint {field} must be an object")
+    for field in ("started_at", "completed_at"):
+        try:
+            parsed = datetime.fromisoformat(clone[field])
+        except (TypeError, ValueError) as exc:
+            raise MultimodelEvaluationError(
+                f"checkpoint {field} must be an ISO-8601 timestamp"
+            ) from exc
+        if parsed.tzinfo is None:
+            raise MultimodelEvaluationError(
+                f"checkpoint {field} must include a timezone"
+            )
+    if datetime.fromisoformat(clone["completed_at"]) < datetime.fromisoformat(
+        clone["started_at"]
+    ):
+        raise MultimodelEvaluationError(
+            "checkpoint completed_at cannot precede started_at"
+        )
+    return clone
 
 
 def _utc_now() -> str:
