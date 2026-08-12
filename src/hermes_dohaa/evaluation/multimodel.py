@@ -210,6 +210,10 @@ def aggregate_model_slot_checkpoints(
                                  _runtime_context(checkpoint["runtime_policy"]))
         if checkpoint["runtime_policy"] != policy:
             mismatches.append("runtime_policy")
+        if checkpoint["evaluation"].get("runtime_policy") != checkpoint[
+            "runtime_policy"
+        ]:
+            mismatches.append("evaluation.runtime_policy")
         if checkpoint["checkpoint_id"] != _checkpoint_identity(checkpoint):
             mismatches.append("checkpoint_id")
         if mismatches:

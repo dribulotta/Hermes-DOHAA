@@ -600,6 +600,7 @@ def _run_evaluate_model_slot(args: argparse.Namespace) -> int:
             runtime_context={
                 "adapter": "hermes_api",
                 "hermes_dohaa_version": __version__,
+                "hermes_url": args.hermes_url,
             },
             execution_code_commit=args.execution_code_commit,
         )

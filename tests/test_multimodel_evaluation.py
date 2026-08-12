@@ -4,6 +4,7 @@ import stat
 import tempfile
 import unittest
 import copy
+import hashlib
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -553,6 +554,98 @@ class IsolatedModelSlotTests(unittest.TestCase):
             aggregate_model_slot_checkpoints(
                 self.suite, self.commitment, self.protocol, self.manifest,
                 altered, execution_code_commit=self.COMMIT,
+            )
+
+    def test_evaluation_runtime_policy_tampering_is_rejected_with_new_id(self):
+        checkpoints = self.checkpoints()
+        altered = copy.deepcopy(checkpoints)
+        altered[0]["evaluation"]["runtime_policy"]["hermes_url"] = (
+            "http://synthetic.invalid/v1"
+        )
+        identity_value = {
+            key: value for key, value in altered[0].items()
+            if key != "checkpoint_id"
+        }
+        canonical = json.dumps(
+            identity_value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        altered[0]["checkpoint_id"] = hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
+
+        with self.assertRaisesRegex(
+            MultimodelEvaluationError, "evaluation.runtime_policy"
+        ):
+            aggregate_model_slot_checkpoints(
+                self.suite, self.commitment, self.protocol, self.manifest,
+                altered, execution_code_commit=self.COMMIT,
+            )
+
+    def test_cli_slot_preserves_url_and_matches_monolithic_runtime_policy(self):
+        endpoint = "http://synthetic.invalid:8642/v1"
+
+        def exact_proposal(runtime, contract, feedback):
+            del feedback
+            runtime.usage_records.append({"total_tokens": 10})
+            return Proposal(dict(contract.inputs["answer"]))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            suite_path = root / "suite.json"
+            commitment_path = root / "suite.commitment.json"
+            manifest_path = root / "models.json"
+            checkpoint_path = root / "slot.json"
+            monolithic_path = root / "monolithic.json"
+            suite_path.write_text(
+                json.dumps(self.suite.to_dict()), encoding="utf-8"
+            )
+            write_suite_commitment(commitment_path, self.commitment)
+            write_model_manifest(manifest_path, self.manifest)
+            slot = self.manifest.models[1]
+            common = [
+                str(suite_path),
+                "--suite-commitment", str(commitment_path),
+                "--protocol", str(PROTOCOL_PATH),
+                "--model-manifest", str(manifest_path),
+                "--hermes-url", endpoint,
+            ]
+            with patch.object(
+                HermesApiRuntime,
+                "propose",
+                autospec=True,
+                side_effect=exact_proposal,
+            ), redirect_stdout(io.StringIO()):
+                slot_exit = main([
+                    "evaluate-model-slot", *common,
+                    "--slot-id", slot.slot_id,
+                    "--execution-code-commit", self.COMMIT,
+                    "--output", str(checkpoint_path),
+                ])
+                monolithic_exit = main([
+                    "evaluate-multimodel", *common,
+                    "--output", str(monolithic_path),
+                ])
+
+            checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            monolithic = json.loads(monolithic_path.read_text(encoding="utf-8"))
+            monolithic_run = next(
+                run for run in monolithic["model_runs"]
+                if run["slot_id"] == slot.slot_id
+            )
+            self.assertEqual(slot_exit, 0)
+            self.assertEqual(monolithic_exit, 0)
+            self.assertEqual(checkpoint["runtime_policy"]["hermes_url"], endpoint)
+            self.assertEqual(
+                checkpoint["evaluation"]["runtime_policy"]["hermes_url"],
+                endpoint,
+            )
+            self.assertEqual(
+                checkpoint["runtime_policy"],
+                monolithic_run["evaluation"]["runtime_policy"],
             )
 
     def test_checkpoint_aggregation_matches_monolithic_results(self):
