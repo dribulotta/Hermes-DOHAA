@@ -225,8 +225,8 @@ suite is authored. Validate its canonical JSON without contacting Hermes:
 The protocol requires three model artifacts to be pinned before suite
 authorship and forbids post-freeze substitution. The existing protected
 holdout v3 is explicitly excluded. The executor enforces the frozen order and
-computes the preregistered unique-case aggregate, but execution remains
-unauthorized until its implementation commit and the exact model manifest are
+computes the preregistered unique-case aggregate. Execution is authorized
+only after its implementation commit and exact model manifest have been
 frozen.
 
 Adapt the sanitized manifest example outside the repository, then freeze it:
@@ -291,6 +291,26 @@ created with mode `0600`; do not publish them. Aggregation verifies their
 embedded identities and policies and performs no runtime calls. This execution
 mode changes orchestration only: it preserves the frozen sampling, conditions,
 repetitions, analysis, and acceptance logic.
+
+### Protected multi-model aggregate result
+
+The
+[protected multi-model holdout v1 aggregate report](evaluation-results/protected-multimodel-holdout-v1.md)
+documents the completed preregistered evaluation using three frozen model
+artifacts and a newly protected 48-case suite. The suite, checkpoints,
+individual outcomes, inputs, proposals, expected values, and oracle remain
+private.
+
+DOHAA averaged 94.44% final strict passage versus 60.42% for direct response.
+The primary comparison recorded 28 aggregate paired wins, no losses, and an
+exact two-sided sign-test p-value of `7.451e-09`. Every evaluable success
+criterion passed. The composite assessment nevertheless remained
+`not_passed` because incomplete runtime token reporting made the predeclared
+token-ratio criterion unevaluable. This fail-closed outcome must not be
+relabelled as a complete protocol pass.
+
+This holdout is now an observed development artifact. It must not be reused to
+guide changes and then presented as an independent confirmation.
 
 ## Freeze a protected pilot
 

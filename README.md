@@ -123,10 +123,14 @@ wins and no losses. This bounded result is not evidence of universal
 superiority; see the
 [protected semantic holdout v3 report](docs/evaluation-results/protected-semantic-holdout-v3.md).
 
-The next independent evaluation is governed by a public
-[multi-model preregistration](docs/evaluation-protocols/multimodel-generalization-v1.md).
-It requires new cases and frozen model identities; protected holdout v3 is not
-eligible for reuse.
+A protected 48-case evaluation governed by the public
+[multi-model preregistration](docs/evaluation-protocols/multimodel-generalization-v1.md)
+tested three frozen model artifacts. DOHAA averaged 94.44% final strict passage
+versus 60.42% for direct response, with 28 aggregate paired wins and no losses.
+All evaluable criteria passed, but the composite assessment remained
+`not_passed` because incomplete token reporting made the cost-ratio criterion
+unevaluable. See the
+[protected multi-model holdout v1 report](docs/evaluation-results/protected-multimodel-holdout-v1.md).
 
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
