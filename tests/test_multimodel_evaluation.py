@@ -421,6 +421,57 @@ class MultimodelEvaluationTests(unittest.TestCase):
             assessment["unevaluable_criteria"],
         )
 
+    def test_token_diagnostics_locate_incomplete_calls_by_model_and_condition(self):
+        selected_protocol = protocol()
+        slots = [slot.slot_id for slot in selected_protocol.model_slots]
+        model_runs = [
+            model_run(slot, [True] * 8, [True] * 8)
+            for slot in slots
+        ]
+        model_runs[0]["evaluation"]["cases"][0]["conditions"]["direct"][
+            "usage"
+        ] = [
+            {
+                "status": "missing",
+                "source": "response.usage",
+                "reason_code": "usage.missing",
+                "reason": "response.usage was absent",
+            }
+        ]
+        model_runs[1]["evaluation"]["cases"][0]["conditions"]["dohaa"][
+            "usage"
+        ] = [
+            {
+                "status": "invalid",
+                "source": "response.usage",
+                "reason_code": "usage.invalid",
+                "reason": "response.usage omitted required token fields",
+            }
+        ]
+        model_runs[2]["evaluation"]["cases"][0]["conditions"]["dohaa"][
+            "usage"
+        ] = []
+
+        analysis = analyze_multimodel_results(selected_protocol, model_runs)
+        assessment = assess_success(selected_protocol, model_runs, analysis)
+        diagnostics = assessment["token_usage_diagnostics"]
+
+        self.assertFalse(diagnostics["complete"])
+        self.assertEqual(
+            diagnostics["by_model"][slots[0]]["direct"]["missing_calls"],
+            1,
+        )
+        self.assertEqual(
+            diagnostics["by_model"][slots[1]]["dohaa"]["invalid_calls"],
+            1,
+        )
+        self.assertEqual(
+            diagnostics["by_model"][slots[2]]["dohaa"]["unobserved_calls"],
+            1,
+        )
+        self.assertFalse(assessment["token_usage_complete"])
+        self.assertEqual(assessment["status"], "not_passed")
+
     def test_manifest_schema_and_example_share_root_fields(self):
         schema = json.loads(MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
         example = json.loads(MANIFEST_EXAMPLE_PATH.read_text(encoding="utf-8"))

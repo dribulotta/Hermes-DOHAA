@@ -28,12 +28,13 @@ from hermes_dohaa.assurance.gates import (
 )
 from hermes_dohaa.controller.engine import DohaaController, RunReasonCode
 from hermes_dohaa.contracts.models import TaskContract
+from hermes_dohaa.assurance.result_spec import json_equal, json_type
 from hermes_dohaa.evaluation.models import EvaluationCase, EvaluationSuite
 from hermes_dohaa.evaluation.statistics import analyze_unique_cases
 from hermes_dohaa.evidence.ledger import EvidenceLedger
 from hermes_dohaa.runtime.base import AgentRuntime, Proposal, VerifierFeedback
 from hermes_dohaa.runtime.hermes_api import HermesApiError
-from hermes_dohaa.assurance.result_spec import json_equal, json_type
+from hermes_dohaa.runtime.usage import summarize_usage
 
 
 class EvaluationCondition(StrEnum):
@@ -350,12 +351,14 @@ def _completed_outcome(
     first = runtime.proposals[0] if runtime.proposals else None
     initial_score = _score(case, first)
     final_score = _score(case, final)
+    usage = _usage_records(runtime.delegate)
     return {
         "condition": condition.value,
         "status": "completed",
         "runtime_calls": runtime.calls,
         "elapsed_seconds": round(runtime.elapsed_seconds, 6),
-        "usage": _usage_records(runtime.delegate),
+        "usage": usage,
+        "usage_summary": summarize_usage(usage, runtime.calls),
         "initial_proposal": first.to_dict() if first is not None else None,
         "final_proposal": final.to_dict() if final is not None else None,
         "initial_score": initial_score,
@@ -405,19 +408,18 @@ def _runtime_failure_details(
 ) -> dict[str, Any]:
     proposals = runtime.proposals if runtime is not None else ()
     first = proposals[0] if proposals else None
+    usage = _usage_records(runtime.delegate) if runtime is not None else []
+    runtime_calls = runtime.calls if runtime is not None else 0
     return {
         "condition": condition.value,
         "status": "runtime_failed",
-        "runtime_calls": runtime.calls if runtime is not None else 0,
+        "runtime_calls": runtime_calls,
         "elapsed_seconds": round(
             runtime.elapsed_seconds if runtime is not None else 0.0,
             6,
         ),
-        "usage": (
-            _usage_records(runtime.delegate)
-            if runtime is not None
-            else []
-        ),
+        "usage": usage,
+        "usage_summary": summarize_usage(usage, runtime_calls),
         "initial_proposal": first.to_dict() if first is not None else None,
         "final_proposal": None,
         "initial_score": _score(case, first) if first is not None else None,
@@ -487,11 +489,10 @@ def _summarize(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             for item in outcomes
             for record in item["usage"]
         ]
-        reported_tokens = [
-            record["total_tokens"]
-            for record in usage
-            if _is_number(record.get("total_tokens"))
-        ]
+        usage_summary = summarize_usage(
+            usage,
+            sum(int(item["runtime_calls"]) for item in outcomes),
+        )
         initial_passes = sum(
             bool(item["initial_score"]["all_gates_passed"])
             for item in completed
@@ -542,13 +543,21 @@ def _summarize(case_results: list[dict[str, Any]]) -> dict[str, Any]:
             "average_elapsed_seconds": _average(
                 [item["elapsed_seconds"] for item in outcomes]
             ),
-            "usage_reported_calls": len(reported_tokens),
-            "reported_total_tokens": sum(reported_tokens),
+            "usage_reported_calls": usage_summary["reported_calls"],
+            "reported_total_tokens": usage_summary["reported_total_tokens"],
             "average_reported_total_tokens_per_case": (
-                round(sum(reported_tokens) / len(outcomes), 6)
-                if reported_tokens
+                round(usage_summary["reported_total_tokens"] / len(outcomes), 6)
+                if usage_summary["reported_calls"]
                 else None
             ),
+            "usage_missing_calls": usage_summary["missing_calls"],
+            "usage_invalid_calls": usage_summary["invalid_calls"],
+            "usage_unavailable_calls": usage_summary["unavailable_calls"],
+            "usage_unobserved_calls": usage_summary["unobserved_calls"],
+            "usage_unexpected_observations": usage_summary[
+                "unexpected_observations"
+            ],
+            "usage_complete": usage_summary["complete"],
         }
     failures = [
         (case, condition, case["conditions"][condition.value])
@@ -671,11 +680,11 @@ def _usage_records(runtime: AgentRuntime) -> list[dict[str, Any]]:
     records = getattr(runtime, "usage_records", ())
     if not isinstance(records, (list, tuple)):
         return []
-    return [dict(item) for item in records if isinstance(item, dict)]
-
-
-def _is_number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float))
+    return [
+        _json_clone(dict(item))
+        for item in records
+        if isinstance(item, dict)
+    ]
 
 
 def _session_id(

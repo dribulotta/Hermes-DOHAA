@@ -271,6 +271,22 @@ class EvaluationTests(unittest.TestCase):
             2.0,
         )
         self.assertEqual(
+            result["summary"]["direct"]["usage_unobserved_calls"],
+            2,
+        )
+        self.assertEqual(
+            result["summary"]["self_reflection"]["usage_unobserved_calls"],
+            4,
+        )
+        self.assertEqual(
+            result["summary"]["dohaa"]["usage_unobserved_calls"],
+            4,
+        )
+        self.assertFalse(result["summary"]["dohaa"]["usage_complete"])
+        first_dohaa = result["cases"][0]["conditions"]["dohaa"]
+        self.assertEqual(first_dohaa["usage_summary"]["expected_calls"], 2)
+        self.assertEqual(first_dohaa["usage_summary"]["unobserved_calls"], 2)
+        self.assertEqual(
             result["paired_comparisons"]["dohaa_vs_direct"],
             {"wins": 2, "losses": 0, "ties": 0},
         )

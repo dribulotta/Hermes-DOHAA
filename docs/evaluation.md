@@ -187,7 +187,8 @@ The result records:
 - paired wins, losses, and ties between conditions;
 - improvements and regressions;
 - runtime calls and elapsed seconds;
-- API token usage when Hermes reports an OpenAI-compatible `usage` object;
+- call-level token-usage telemetry, including explicit missing, invalid, and
+  unavailable observations when Hermes cannot provide a valid `usage` object;
 - DOHAA terminal state, attempt count, reason code, and ledger-chain verdict.
 
 The result also contains `statistical_analysis`. Repetitions are nested within
@@ -199,6 +200,33 @@ metrics, but must not be presented as independent sample size.
 Runtime failures are outcomes, not silently discarded samples. A completed
 experiment may therefore contain failed conditions while the command itself
 returns successfully.
+
+### Token-usage telemetry
+
+The Hermes adapter records exactly one safe, ordered usage observation with a
+one-based `call_index` for every API call it makes. A reported observation is
+accepted only when it matches one of the documented OpenAI-compatible field
+families:
+
+- Chat Completions: `prompt_tokens`, `completion_tokens`, and `total_tokens`;
+- Responses: `input_tokens`, `output_tokens`, and `total_tokens`.
+
+All counts must be non-negative integers, the total must be positive, and the
+total must equal the two component counts. Extra provider fields are ignored.
+Mixed field families, partial objects, floats, booleans, inconsistent totals,
+and non-object values are marked `invalid`; an absent `usage` member is marked
+`missing`. Transport or response failures are marked `unavailable` with only
+the stable runtime failure code. Raw response content is never retained in
+usage diagnostics.
+
+Each outcome includes `usage_summary`, and condition summaries report the
+number of reported, missing, invalid, unavailable, and unobserved calls. The
+multi-model assessment additionally groups these counts by frozen model slot
+and condition. A token criterion is evaluable only when every direct and DOHAA
+call has one valid reported observation. Missing measurements are never
+estimated, reconstructed from text, or silently converted to zero. Legacy
+result artifacts containing positive `total_tokens` records remain readable,
+but new Hermes calls use the structured observations above.
 
 ## Protected aggregate result
 
@@ -253,6 +281,10 @@ as failed observations, averages paired pass indicators across models before
 the global sign test, and evaluates every success criterion. Missing usage for
 any direct or DOHAA call makes the token criterion `unevaluable`; an
 unevaluable criterion cannot produce an overall pass.
+
+The telemetry additions are prospective. They make future incomplete runs
+diagnosable, but do not alter, impute, or retroactively reclassify archived
+evaluations such as protected multi-model candidate 03.
 
 ### Isolated, resumable model slots
 
