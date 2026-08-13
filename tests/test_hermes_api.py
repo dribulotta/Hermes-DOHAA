@@ -143,6 +143,10 @@ class HermesApiTests(unittest.TestCase):
             runtime.usage_records,
             [
                 {
+                    "status": "reported",
+                    "source": "response.usage",
+                    "shape": "openai_chat_completions",
+                    "call_index": 1,
                     "prompt_tokens": 100,
                     "completion_tokens": 20,
                     "total_tokens": 120,

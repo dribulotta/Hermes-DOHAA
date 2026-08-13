@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 from uuid import uuid4
 
+from hermes_dohaa.runtime.usage import summarize_usage
+
 from .commitment import SuiteCommitment, SuiteCommitmentError
 from .model_manifest import ModelArtifact, ModelManifest, ModelManifestError
 from .models import EvaluationSuite
@@ -429,17 +431,15 @@ def assess_success(
     )
     dohaa_calls, dohaa_trials = _calls_and_trials(model_runs, "dohaa")
     average_dohaa_calls = round(dohaa_calls / dohaa_trials, 6)
-    direct_tokens, direct_usage_calls, direct_calls = _token_totals(
-        model_runs, "direct"
-    )
-    dohaa_tokens, dohaa_usage_calls, dohaa_total_calls = _token_totals(
-        model_runs, "dohaa"
-    )
+    usage_diagnostics = _token_usage_diagnostics(model_runs)
+    direct_usage = usage_diagnostics["by_condition"]["direct"]
+    dohaa_usage = usage_diagnostics["by_condition"]["dohaa"]
+    direct_tokens = direct_usage["reported_total_tokens"]
+    dohaa_tokens = dohaa_usage["reported_total_tokens"]
     token_complete = (
-        direct_calls > 0
-        and dohaa_total_calls > 0
-        and direct_usage_calls == direct_calls
-        and dohaa_usage_calls == dohaa_total_calls
+        direct_usage["expected_calls"] > 0
+        and dohaa_usage["expected_calls"] > 0
+        and usage_diagnostics["complete"]
         and direct_tokens > 0
     )
     token_ratio = (
@@ -515,6 +515,7 @@ def assess_success(
         "unevaluable_criteria": unevaluable,
         "model_pass_rate_deltas": dict(sorted(deltas.items())),
         "token_usage_complete": token_complete,
+        "token_usage_diagnostics": usage_diagnostics,
     }
 
 
@@ -608,22 +609,47 @@ def _calls_and_trials(
     return calls, trials
 
 
-def _token_totals(
-    model_runs: list[dict[str, Any]], condition: str
-) -> tuple[int, int, int]:
-    tokens = 0
-    usage_calls = 0
-    calls = 0
+def _token_usage_diagnostics(
+    model_runs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    conditions = ("direct", "dohaa")
+    by_model: dict[str, Any] = {}
+    by_condition_records = {condition: [] for condition in conditions}
+    by_condition_calls = {condition: 0 for condition in conditions}
+
     for run in model_runs:
-        for case in _evaluation(run)["cases"]:
-            outcome = case["conditions"][condition]
-            calls += int(outcome["runtime_calls"])
-            for usage in outcome.get("usage", []):
-                total = usage.get("total_tokens") if isinstance(usage, dict) else None
-                if not isinstance(total, bool) and isinstance(total, (int, float)):
-                    tokens += int(total)
-                    usage_calls += 1
-    return tokens, usage_calls, calls
+        slot_id = str(run["slot_id"])
+        model_summary: dict[str, Any] = {}
+        for condition in conditions:
+            records: list[dict[str, Any]] = []
+            calls = 0
+            for case in _evaluation(run)["cases"]:
+                outcome = case["conditions"][condition]
+                calls += int(outcome["runtime_calls"])
+                raw_records = outcome.get("usage", [])
+                if isinstance(raw_records, (list, tuple)):
+                    records.extend(
+                        dict(record)
+                        for record in raw_records
+                        if isinstance(record, Mapping)
+                    )
+            model_summary[condition] = summarize_usage(records, calls)
+            by_condition_records[condition].extend(records)
+            by_condition_calls[condition] += calls
+        by_model[slot_id] = model_summary
+
+    by_condition = {
+        condition: summarize_usage(
+            by_condition_records[condition],
+            by_condition_calls[condition],
+        )
+        for condition in conditions
+    }
+    return {
+        "complete": all(item["complete"] for item in by_condition.values()),
+        "by_condition": by_condition,
+        "by_model": dict(sorted(by_model.items())),
+    }
 
 
 def _mean(values: Any) -> float:

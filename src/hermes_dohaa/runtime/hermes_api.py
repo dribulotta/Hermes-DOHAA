@@ -13,6 +13,10 @@ from typing import Any, Sequence
 
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
+from hermes_dohaa.runtime.usage import (
+    normalize_response_usage,
+    unavailable_usage,
+)
 
 
 _REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
@@ -57,6 +61,7 @@ class HermesApiRuntime:
         init=False,
         repr=False,
     )
+    _usage_call_index: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.timeout_seconds <= 0:
@@ -148,6 +153,7 @@ class HermesApiRuntime:
                 content_type = _content_type(getattr(response, "headers", None))
                 status = getattr(response, "status", None)
         except urllib.error.HTTPError as exc:
+            self._record_usage(unavailable_usage("response.http_error"))
             raise HermesApiError(
                 "response.http_error",
                 "Hermes returned an unsuccessful HTTP response",
@@ -158,16 +164,19 @@ class HermesApiRuntime:
                 ),
             ) from exc
         except (TimeoutError, socket.timeout) as exc:
+            self._record_usage(unavailable_usage("response.timeout"))
             raise HermesApiError(
                 "response.timeout", "Hermes API request timed out", {"stage": "request"}
             ) from exc
         except urllib.error.URLError as exc:
             if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+                self._record_usage(unavailable_usage("response.timeout"))
                 raise HermesApiError(
                     "response.timeout",
                     "Hermes API request timed out",
                     {"stage": "request"},
                 ) from exc
+            self._record_usage(unavailable_usage("response.connection_failed"))
             raise HermesApiError(
                 "response.connection_failed",
                 "Hermes API connection failed",
@@ -183,6 +192,7 @@ class HermesApiRuntime:
         try:
             payload = json.loads(response_bytes)
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            self._record_usage(unavailable_usage("response.json_invalid"))
             raise HermesApiError(
                 "response.json_invalid",
                 "Hermes returned a non-JSON HTTP response",
@@ -190,7 +200,7 @@ class HermesApiRuntime:
             ) from exc
 
         usage = payload.get("usage") if isinstance(payload, dict) else None
-        self.usage_records.append(_safe_usage(usage))
+        self._record_usage(normalize_response_usage(usage))
 
         try:
             content = payload["choices"][0]["message"]["content"]
@@ -201,6 +211,12 @@ class HermesApiRuntime:
                 response_details,
             ) from exc
         return parse_proposal_content(content)
+
+    def _record_usage(self, record: dict[str, Any]) -> None:
+        self._usage_call_index += 1
+        observation = dict(record)
+        observation["call_index"] = self._usage_call_index
+        self.usage_records.append(observation)
 
     def _chat_completions_url(self) -> str:
         """Build the endpoint while accepting base URLs with or without /v1."""
@@ -319,18 +335,6 @@ def _json_clone(value: Any) -> Any:
     return json.loads(
         json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
     )
-
-
-def _safe_usage(value: Any) -> dict[str, int | float]:
-    if not isinstance(value, dict):
-        return {}
-    allowed = ("prompt_tokens", "completion_tokens", "total_tokens")
-    return {
-        key: item
-        for key in allowed
-        if isinstance((item := value.get(key)), (int, float))
-        and not isinstance(item, bool)
-    }
 
 
 _SYSTEM_PROMPT = """You are the cognitive runtime inside a DOHAA-controlled process.
