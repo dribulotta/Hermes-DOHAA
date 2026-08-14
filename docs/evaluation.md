@@ -344,6 +344,23 @@ relabelled as a complete protocol pass.
 This holdout is now an observed development artifact. It must not be reused to
 guide changes and then presented as an independent confirmation.
 
+### Protected multi-model Candidate 04 result
+
+A second, separately frozen 48-case suite was executed prospectively after the
+token-telemetry change. The
+[Candidate 04 aggregate report](evaluation-results/protected-multimodel-holdout-v1-c04.md)
+records DOHAA at 52.78% final strict passage and direct response at 51.39%, with
+three aggregate paired wins, one loss, 44 ties, and an exact two-sided sign-test
+p-value of `0.625`.
+
+The assessment was `not_passed`. Only one model had a positive pass-rate delta,
+the primary p-value exceeded the predeclared alpha, and the token-ratio
+criterion remained unevaluable. Runtime availability severely limited both
+comparator slots: 215 condition outcomes failed, including 185 timeouts and 29
+connection failures. The protocol retains those failures in every denominator.
+Candidate 04 must not be rerun after infrastructure changes and presented as an
+independent confirmation; a new protected confirmation requires a new suite.
+
 ## Freeze a protected pilot
 
 Create the first meaningful pilot outside the public repository. It must have
