@@ -1,0 +1,3474 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "public-runtime-stability-v1",
+  "description": "Public, reproducible runtime-stability workload for transport, timeout, isolation, and usage-telemetry diagnostics. It is not a protected benchmark and must not support generalization claims.",
+  "cases": [
+    {
+      "case_id": "inventory-evidence-reconciliation",
+      "domain": "evidence_synthesis",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-inventory-evidence-reconciliation",
+        "objective": "Reconcile inventory movements from three independent evidence sources and return the available quantity, status, and complete source set.",
+        "inputs": {
+          "ledger": {
+            "opening_units": 1250,
+            "receipt_batches": [
+              180,
+              95,
+              75
+            ],
+            "customer_returns": [
+              12,
+              8
+            ],
+            "shipment_batches": [
+              620,
+              210
+            ],
+            "damaged_units": 25,
+            "reserved_units": 140
+          },
+          "sources": [
+            {
+              "source_id": "warehouse-ledger",
+              "role": "movement totals",
+              "revision": 7
+            },
+            {
+              "source_id": "damage-register",
+              "role": "write-offs",
+              "revision": 3
+            },
+            {
+              "source_id": "reservation-book",
+              "role": "committed stock",
+              "revision": 11
+            }
+          ],
+          "rules": {
+            "formula": "opening + receipts + returns - shipments - damaged - reserved",
+            "balanced_label": "reconciled",
+            "negative_label": "investigate"
+          },
+          "audit_notes": [
+            "Receipt batches are posted before shipment batches.",
+            "Reserved units remain physically present but are not available.",
+            "Damage write-offs must be deducted exactly once."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "verified_available_units",
+              "reconciliation_status",
+              "source_ids"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "verified_available_units": {
+                "type": "integer"
+              },
+              "reconciliation_status": {
+                "type": "string"
+              },
+              "source_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "inventory-balance",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/verified_available_units"
+              },
+              "right": {
+                "op": "subtract",
+                "args": [
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/ledger/opening_units"
+                      },
+                      {
+                        "op": "sum",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/ledger/receipt_batches"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "sum",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/ledger/customer_returns"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "op": "sum",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/ledger/shipment_batches"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/ledger/damaged_units"
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/ledger/reserved_units"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "inventory-status",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/reconciliation_status"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/rules/balanced_label"
+              }
+            },
+            {
+              "assertion_id": "inventory-source-set",
+              "operator": "set_equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/source_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/sources"
+                  }
+                ],
+                "pointer": "/source_id"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id inventory-evidence-reconciliation-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "inventory-evidence-reconciliation-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "inventory-evidence-reconciliation-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "verified_available_units": 625,
+        "reconciliation_status": "reconciled",
+        "source_ids": [
+          "warehouse-ledger",
+          "damage-register",
+          "reservation-book"
+        ]
+      }
+    },
+    {
+      "case_id": "program-budget-reconciliation",
+      "domain": "quantitative_reconciliation",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-program-budget-reconciliation",
+        "objective": "Reconcile authorization, commitments, payments, remaining funds, and percentage utilization under one visible budget formula.",
+        "inputs": {
+          "budget": {
+            "initial": 450000,
+            "supplements": [
+              25000,
+              10000
+            ],
+            "committed": [
+              120000,
+              88500,
+              46250
+            ],
+            "paid": [
+              74000,
+              31500
+            ]
+          },
+          "rounding": {
+            "percentage_digits": 2,
+            "percentage_multiplier": 100
+          },
+          "labels": {
+            "healthy": "within_plan",
+            "exhausted": "over_plan"
+          },
+          "calculation_notes": [
+            "Supplements increase the authorized budget.",
+            "Committed and paid amounts are distinct uses and must both be deducted.",
+            "Utilization is total use divided by total authorization, multiplied by 100."
+          ],
+          "control_totals": {
+            "line_count": 7,
+            "currency": "USD"
+          },
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "authorized_budget",
+              "total_used",
+              "remaining_budget",
+              "utilization_percent",
+              "status"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "authorized_budget": {
+                "type": "integer"
+              },
+              "total_used": {
+                "type": "integer"
+              },
+              "remaining_budget": {
+                "type": "integer"
+              },
+              "utilization_percent": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "authorized-budget",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/authorized_budget"
+              },
+              "right": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/budget/initial"
+                  },
+                  {
+                    "op": "sum",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/budget/supplements"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "total-budget-use",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/total_used"
+              },
+              "right": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "sum",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/budget/committed"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "sum",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/budget/paid"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "remaining-budget",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/remaining_budget"
+              },
+              "right": {
+                "op": "subtract",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/authorized_budget"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/total_used"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "budget-utilization",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/utilization_percent"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "multiply",
+                    "args": [
+                      {
+                        "op": "divide",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "result",
+                            "pointer": "/total_used"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "result",
+                            "pointer": "/authorized_budget"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/rounding/percentage_multiplier"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "budget-status",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/status"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/healthy"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id program-budget-reconciliation-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "program-budget-reconciliation-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "program-budget-reconciliation-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "authorized_budget": 485000,
+        "total_used": 360250,
+        "remaining_budget": 124750,
+        "utilization_percent": 74.28,
+        "status": "within_plan"
+      }
+    },
+    {
+      "case_id": "open-order-extraction",
+      "domain": "structured_extraction",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-open-order-extraction",
+        "objective": "Filter open orders, sort them by explicit priority, and project identifiers, unique customers, and count.",
+        "inputs": {
+          "orders": [
+            {
+              "order_id": "o-101",
+              "state": "open",
+              "priority_rank": 2,
+              "customer": "Aster",
+              "amount": 4300
+            },
+            {
+              "order_id": "o-102",
+              "state": "closed",
+              "priority_rank": 1,
+              "customer": "Boreal",
+              "amount": 1200
+            },
+            {
+              "order_id": "o-103",
+              "state": "open",
+              "priority_rank": 3,
+              "customer": "Cobalt",
+              "amount": 2750
+            },
+            {
+              "order_id": "o-104",
+              "state": "open",
+              "priority_rank": 1,
+              "customer": "Aster",
+              "amount": 8900
+            },
+            {
+              "order_id": "o-105",
+              "state": "cancelled",
+              "priority_rank": 2,
+              "customer": "Delta",
+              "amount": 640
+            }
+          ],
+          "selectors": {
+            "open_state": "open"
+          },
+          "ordering": {
+            "field": "priority_rank",
+            "direction": "ascending"
+          },
+          "extraction_notes": [
+            "Select only records whose state exactly equals the open-state selector.",
+            "Sort selected records by ascending numeric priority before projecting identifiers.",
+            "Return unique customers in that same selected order."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "open_order_ids",
+              "open_customers",
+              "open_count"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "open_order_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "open_customers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "open_count": {
+                "type": "integer"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "open-order-identifiers",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/open_order_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "sort_by",
+                    "args": [
+                      {
+                        "op": "filter",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/orders"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/selectors/open_state"
+                          }
+                        ],
+                        "pointer": "/state",
+                        "comparator": "equals"
+                      }
+                    ],
+                    "pointer": "/priority_rank",
+                    "order": "ascending"
+                  }
+                ],
+                "pointer": "/order_id"
+              }
+            },
+            {
+              "assertion_id": "open-order-customers",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/open_customers"
+              },
+              "right": {
+                "op": "unique",
+                "args": [
+                  {
+                    "op": "project",
+                    "args": [
+                      {
+                        "op": "sort_by",
+                        "args": [
+                          {
+                            "op": "filter",
+                            "args": [
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/orders"
+                              },
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/selectors/open_state"
+                              }
+                            ],
+                            "pointer": "/state",
+                            "comparator": "equals"
+                          }
+                        ],
+                        "pointer": "/priority_rank",
+                        "order": "ascending"
+                      }
+                    ],
+                    "pointer": "/customer"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "open-order-count",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/open_count"
+              },
+              "right": {
+                "op": "length",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/open_order_ids"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id open-order-extraction-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "open-order-extraction-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "open-order-extraction-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "open_order_ids": [
+          "o-104",
+          "o-101",
+          "o-103"
+        ],
+        "open_customers": [
+          "Aster",
+          "Cobalt"
+        ],
+        "open_count": 3
+      }
+    },
+    {
+      "case_id": "incident-timeline-reconstruction",
+      "domain": "temporal_reasoning",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-incident-timeline-reconstruction",
+        "objective": "Reconstruct an unordered incident timeline, compute its elapsed duration, and identify the final service state.",
+        "inputs": {
+          "events": [
+            {
+              "event_id": "evt-4",
+              "timestamp": "2026-08-14T10:42:00Z",
+              "state": "recovering"
+            },
+            {
+              "event_id": "evt-1",
+              "timestamp": "2026-08-14T09:05:00Z",
+              "state": "investigating"
+            },
+            {
+              "event_id": "evt-5",
+              "timestamp": "2026-08-14T11:20:00Z",
+              "state": "restored"
+            },
+            {
+              "event_id": "evt-2",
+              "timestamp": "2026-08-14T09:18:00Z",
+              "state": "identified"
+            },
+            {
+              "event_id": "evt-3",
+              "timestamp": "2026-08-14T09:47:00Z",
+              "state": "mitigating"
+            }
+          ],
+          "anchors": {
+            "start": "2026-08-14T09:05:00Z",
+            "end": "2026-08-14T11:20:00Z"
+          },
+          "labels": {
+            "latest_state": "restored"
+          },
+          "ordering": {
+            "field": "timestamp",
+            "direction": "ascending"
+          },
+          "timeline_notes": [
+            "Order all events by timezone-aware timestamp ascending.",
+            "Elapsed minutes span the supplied start and end anchors.",
+            "The latest state must correspond to the final ordered event."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "ordered_event_ids",
+              "elapsed_minutes",
+              "latest_state"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "ordered_event_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "elapsed_minutes": {
+                "type": "integer"
+              },
+              "latest_state": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "timeline-order",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/ordered_event_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "sort_by",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/events"
+                      }
+                    ],
+                    "pointer": "/timestamp",
+                    "order": "ascending"
+                  }
+                ],
+                "pointer": "/event_id"
+              }
+            },
+            {
+              "assertion_id": "timeline-duration",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/elapsed_minutes"
+              },
+              "right": {
+                "op": "duration_minutes",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/anchors/start"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/anchors/end"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "timeline-latest-state",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/latest_state"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/latest_state"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id incident-timeline-reconstruction-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "incident-timeline-reconstruction-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "incident-timeline-reconstruction-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "ordered_event_ids": [
+          "evt-1",
+          "evt-2",
+          "evt-3",
+          "evt-4",
+          "evt-5"
+        ],
+        "elapsed_minutes": 135,
+        "latest_state": "restored"
+      }
+    },
+    {
+      "case_id": "service-impact-evidence",
+      "domain": "evidence_synthesis",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-service-impact-evidence",
+        "objective": "Combine latency and error evidence without cross-service averaging to identify services that breach both incident thresholds.",
+        "inputs": {
+          "telemetry": [
+            {
+              "service": "gateway",
+              "latency_ms": 910,
+              "error_rate": 0.07,
+              "samples": 4800
+            },
+            {
+              "service": "catalog",
+              "latency_ms": 180,
+              "error_rate": 0.008,
+              "samples": 5100
+            },
+            {
+              "service": "payments",
+              "latency_ms": 1040,
+              "error_rate": 0.09,
+              "samples": 3950
+            },
+            {
+              "service": "search",
+              "latency_ms": 220,
+              "error_rate": 0.01,
+              "samples": 6200
+            }
+          ],
+          "thresholds": {
+            "latency_ms": 800,
+            "error_rate": 0.05
+          },
+          "labels": {
+            "incident_severity": "high",
+            "normal_severity": "normal"
+          },
+          "source_catalog": [
+            {
+              "source_id": "edge-metrics",
+              "covers": [
+                "gateway",
+                "catalog"
+              ]
+            },
+            {
+              "source_id": "transaction-metrics",
+              "covers": [
+                "payments"
+              ]
+            },
+            {
+              "source_id": "query-metrics",
+              "covers": [
+                "search"
+              ]
+            }
+          ],
+          "rule_notes": [
+            "A service is impacted only when both visible thresholds are met or exceeded.",
+            "Keep the telemetry order when returning service identifiers.",
+            "Do not average measurements between services."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "impacted_services",
+              "incident_severity",
+              "evaluated_service_count"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "impacted_services": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "incident_severity": {
+                "type": "string"
+              },
+              "evaluated_service_count": {
+                "type": "integer"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "impacted-service-order",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/impacted_services"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "filter",
+                    "args": [
+                      {
+                        "op": "filter",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/telemetry"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/thresholds/latency_ms"
+                          }
+                        ],
+                        "pointer": "/latency_ms",
+                        "comparator": "greater_than_or_equal"
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/thresholds/error_rate"
+                      }
+                    ],
+                    "pointer": "/error_rate",
+                    "comparator": "greater_than_or_equal"
+                  }
+                ],
+                "pointer": "/service"
+              }
+            },
+            {
+              "assertion_id": "service-count",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/evaluated_service_count"
+              },
+              "right": {
+                "op": "length",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/telemetry"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "incident-severity",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/incident_severity"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/incident_severity"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id service-impact-evidence-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "service-impact-evidence-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "service-impact-evidence-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "impacted_services": [
+          "gateway",
+          "payments"
+        ],
+        "incident_severity": "high",
+        "evaluated_service_count": 4
+      }
+    },
+    {
+      "case_id": "energy-billing-reconciliation",
+      "domain": "quantitative_reconciliation",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-energy-billing-reconciliation",
+        "objective": "Compute metered usage and reconcile base, peak, fee, and credit components into an exact rounded bill.",
+        "inputs": {
+          "meter": {
+            "previous_kwh": 12840,
+            "current_kwh": 15765
+          },
+          "tariff": {
+            "base_rate": 0.184,
+            "peak_units": 800,
+            "peak_surcharge_rate": 0.061,
+            "service_fee": 32.5,
+            "credit": 18.75
+          },
+          "rounding": {
+            "currency_digits": 2
+          },
+          "labels": {
+            "currency": "USD",
+            "billing_state": "ready"
+          },
+          "billing_notes": [
+            "Usage is the current cumulative reading minus the previous reading.",
+            "The peak surcharge applies only to the supplied peak-unit count.",
+            "Add the service fee and subtract the credit after energy charges."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "usage_kwh",
+              "base_charge",
+              "peak_surcharge",
+              "amount_due",
+              "billing_state"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "usage_kwh": {
+                "type": "integer"
+              },
+              "base_charge": {
+                "type": "number"
+              },
+              "peak_surcharge": {
+                "type": "number"
+              },
+              "amount_due": {
+                "type": "number"
+              },
+              "billing_state": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "energy-usage",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/usage_kwh"
+              },
+              "right": {
+                "op": "subtract",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/meter/current_kwh"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/meter/previous_kwh"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "energy-base-charge",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/base_charge"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "multiply",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "result",
+                        "pointer": "/usage_kwh"
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/tariff/base_rate"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "energy-peak-surcharge",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/peak_surcharge"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "multiply",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/tariff/peak_units"
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/tariff/peak_surcharge_rate"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "energy-total",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/amount_due"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "subtract",
+                    "args": [
+                      {
+                        "op": "add",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "result",
+                            "pointer": "/base_charge"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "result",
+                            "pointer": "/peak_surcharge"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/tariff/service_fee"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/tariff/credit"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "billing-state",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/billing_state"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/billing_state"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id energy-billing-reconciliation-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "energy-billing-reconciliation-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "energy-billing-reconciliation-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "usage_kwh": 2925,
+        "base_charge": 538.2,
+        "peak_surcharge": 48.8,
+        "amount_due": 600.75,
+        "billing_state": "ready"
+      }
+    },
+    {
+      "case_id": "critical-control-extraction",
+      "domain": "structured_extraction",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-critical-control-extraction",
+        "objective": "Apply cumulative status and severity filters to controls, then sort and project the surviving structured records.",
+        "inputs": {
+          "controls": [
+            {
+              "control_id": "c-4",
+              "status": "active",
+              "severity": "critical",
+              "due_date": "2026-08-21",
+              "owner": "risk"
+            },
+            {
+              "control_id": "c-7",
+              "status": "inactive",
+              "severity": "critical",
+              "due_date": "2026-08-18",
+              "owner": "security"
+            },
+            {
+              "control_id": "c-9",
+              "status": "active",
+              "severity": "critical",
+              "due_date": "2026-08-19",
+              "owner": "security"
+            },
+            {
+              "control_id": "c-12",
+              "status": "active",
+              "severity": "moderate",
+              "due_date": "2026-08-17",
+              "owner": "operations"
+            },
+            {
+              "control_id": "c-15",
+              "status": "active",
+              "severity": "low",
+              "due_date": "2026-08-16",
+              "owner": "operations"
+            }
+          ],
+          "selectors": {
+            "active": "active",
+            "critical": "critical"
+          },
+          "ordering": {
+            "field": "due_date",
+            "direction": "ascending"
+          },
+          "extraction_notes": [
+            "Apply status and severity filters cumulatively.",
+            "Sort the surviving controls by ISO due date ascending.",
+            "Project control identifiers and preserve unique owners in sorted order."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "control_ids",
+              "owners",
+              "control_count"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "control_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "owners": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "control_count": {
+                "type": "integer"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "critical-control-identifiers",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/control_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "sort_by",
+                    "args": [
+                      {
+                        "op": "filter",
+                        "args": [
+                          {
+                            "op": "filter",
+                            "args": [
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/controls"
+                              },
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/selectors/active"
+                              }
+                            ],
+                            "pointer": "/status",
+                            "comparator": "equals"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/selectors/critical"
+                          }
+                        ],
+                        "pointer": "/severity",
+                        "comparator": "equals"
+                      }
+                    ],
+                    "pointer": "/due_date",
+                    "order": "ascending"
+                  }
+                ],
+                "pointer": "/control_id"
+              }
+            },
+            {
+              "assertion_id": "critical-control-owners",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/owners"
+              },
+              "right": {
+                "op": "unique",
+                "args": [
+                  {
+                    "op": "project",
+                    "args": [
+                      {
+                        "op": "sort_by",
+                        "args": [
+                          {
+                            "op": "filter",
+                            "args": [
+                              {
+                                "op": "filter",
+                                "args": [
+                                  {
+                                    "op": "ref",
+                                    "source": "inputs",
+                                    "pointer": "/controls"
+                                  },
+                                  {
+                                    "op": "ref",
+                                    "source": "inputs",
+                                    "pointer": "/selectors/active"
+                                  }
+                                ],
+                                "pointer": "/status",
+                                "comparator": "equals"
+                              },
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/selectors/critical"
+                              }
+                            ],
+                            "pointer": "/severity",
+                            "comparator": "equals"
+                          }
+                        ],
+                        "pointer": "/due_date",
+                        "order": "ascending"
+                      }
+                    ],
+                    "pointer": "/owner"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "critical-control-count",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/control_count"
+              },
+              "right": {
+                "op": "length",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/control_ids"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id critical-control-extraction-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "critical-control-extraction-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "critical-control-extraction-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "control_ids": [
+          "c-9",
+          "c-4"
+        ],
+        "owners": [
+          "security",
+          "risk"
+        ],
+        "control_count": 2
+      }
+    },
+    {
+      "case_id": "business-day-review-deadline",
+      "domain": "temporal_reasoning",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-business-day-review-deadline",
+        "objective": "Calculate a review deadline over weekends and an explicit holiday calendar while preserving supplied milestone metadata.",
+        "inputs": {
+          "request": {
+            "received_date": "2026-08-14",
+            "business_days": 7
+          },
+          "calendar": {
+            "holidays": [
+              "2026-08-17"
+            ]
+          },
+          "milestones": {
+            "acknowledgement_date": "2026-08-15",
+            "review_label": "due"
+          },
+          "deadline_notes": [
+            "Business-day addition starts after the received date.",
+            "Saturday and Sunday are excluded.",
+            "Dates listed in holidays are excluded even when they are weekdays."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "review_deadline",
+              "acknowledgement_date",
+              "deadline_state"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "review_deadline": {
+                "type": "string"
+              },
+              "acknowledgement_date": {
+                "type": "string"
+              },
+              "deadline_state": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "business-review-deadline",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/review_deadline"
+              },
+              "right": {
+                "op": "add_business_days",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/request/received_date"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/request/business_days"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/calendar/holidays"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "acknowledgement-date",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/acknowledgement_date"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/milestones/acknowledgement_date"
+              }
+            },
+            {
+              "assertion_id": "deadline-state",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/deadline_state"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/milestones/review_label"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id business-day-review-deadline-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "business-day-review-deadline-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "business-day-review-deadline-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "review_deadline": "2026-08-26",
+        "acknowledgement_date": "2026-08-15",
+        "deadline_state": "due"
+      }
+    },
+    {
+      "case_id": "procurement-receipt-evidence",
+      "domain": "evidence_synthesis",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-procurement-receipt-evidence",
+        "objective": "Synthesize receiving, rejection, invoice, and tolerance evidence into a signed procurement reconciliation.",
+        "inputs": {
+          "receipts": [
+            {
+              "receipt_id": "r-701",
+              "accepted_units": 430,
+              "rejected_units": 12,
+              "dock": "north"
+            },
+            {
+              "receipt_id": "r-702",
+              "accepted_units": 275,
+              "rejected_units": 5,
+              "dock": "east"
+            },
+            {
+              "receipt_id": "r-703",
+              "accepted_units": 310,
+              "rejected_units": 9,
+              "dock": "north"
+            }
+          ],
+          "invoice": {
+            "invoice_id": "inv-882",
+            "billed_units": 1020,
+            "currency": "USD"
+          },
+          "tolerance": {
+            "maximum_absolute_unit_difference": 2
+          },
+          "labels": {
+            "within_tolerance": "approve",
+            "outside_tolerance": "review"
+          },
+          "source_catalog": [
+            {
+              "source_id": "receiving-system",
+              "authority": "accepted and rejected quantities"
+            },
+            {
+              "source_id": "supplier-invoice",
+              "authority": "billed quantity"
+            },
+            {
+              "source_id": "procurement-rulebook",
+              "authority": "difference tolerance"
+            }
+          ],
+          "reconciliation_notes": [
+            "Only accepted units can be matched to billed units.",
+            "Rejected units are reported separately and never added to accepted units.",
+            "The signed discrepancy is billed units minus accepted units."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "accepted_units",
+              "rejected_units",
+              "signed_discrepancy_units",
+              "decision"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "accepted_units": {
+                "type": "integer"
+              },
+              "rejected_units": {
+                "type": "integer"
+              },
+              "signed_discrepancy_units": {
+                "type": "integer"
+              },
+              "decision": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "accepted-unit-total",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/accepted_units"
+              },
+              "right": {
+                "op": "sum",
+                "args": [
+                  {
+                    "op": "project",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/receipts"
+                      }
+                    ],
+                    "pointer": "/accepted_units"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "rejected-unit-total",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/rejected_units"
+              },
+              "right": {
+                "op": "sum",
+                "args": [
+                  {
+                    "op": "project",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/receipts"
+                      }
+                    ],
+                    "pointer": "/rejected_units"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "signed-procurement-discrepancy",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/signed_discrepancy_units"
+              },
+              "right": {
+                "op": "subtract",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/invoice/billed_units"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/accepted_units"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "procurement-decision",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/decision"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/outside_tolerance"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id procurement-receipt-evidence-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "procurement-receipt-evidence-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "procurement-receipt-evidence-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "accepted_units": 1015,
+        "rejected_units": 26,
+        "signed_discrepancy_units": 5,
+        "decision": "review"
+      }
+    },
+    {
+      "case_id": "freight-weight-reconciliation",
+      "domain": "quantitative_reconciliation",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-freight-weight-reconciliation",
+        "objective": "Reconcile gross weights, container tares, net shipment weight, and the signed variance against an invoice.",
+        "inputs": {
+          "declared_weights_kg": [
+            128.4,
+            95.6,
+            77.25
+          ],
+          "container_tares_kg": [
+            12.5,
+            11.75,
+            9.25
+          ],
+          "invoice": {
+            "billable_weight_kg": 269.0
+          },
+          "tolerance": {
+            "absolute_kg": 2.0
+          },
+          "labels": {
+            "within_tolerance": "accept",
+            "outside_tolerance": "review"
+          },
+          "rounding": {
+            "weight_digits": 2
+          },
+          "reconciliation_notes": [
+            "Gross declared weight is the sum of all package weights.",
+            "Net shipment weight deducts every container tare once.",
+            "Signed variance is net shipment weight minus invoice weight."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "gross_weight_kg",
+              "tare_weight_kg",
+              "net_weight_kg",
+              "signed_variance_kg",
+              "decision"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "gross_weight_kg": {
+                "type": "number"
+              },
+              "tare_weight_kg": {
+                "type": "number"
+              },
+              "net_weight_kg": {
+                "type": "number"
+              },
+              "signed_variance_kg": {
+                "type": "number"
+              },
+              "decision": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "gross-freight-weight",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/gross_weight_kg"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "sum",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/declared_weights_kg"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "tare-freight-weight",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/tare_weight_kg"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "sum",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/container_tares_kg"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "net-freight-weight",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/net_weight_kg"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "subtract",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "result",
+                        "pointer": "/gross_weight_kg"
+                      },
+                      {
+                        "op": "ref",
+                        "source": "result",
+                        "pointer": "/tare_weight_kg"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "freight-variance",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/signed_variance_kg"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "subtract",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "result",
+                        "pointer": "/net_weight_kg"
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/invoice/billable_weight_kg"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "freight-decision",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/decision"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/within_tolerance"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id freight-weight-reconciliation-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "freight-weight-reconciliation-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "freight-weight-reconciliation-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "gross_weight_kg": 301.25,
+        "tare_weight_kg": 33.5,
+        "net_weight_kg": 267.75,
+        "signed_variance_kg": -1.25,
+        "decision": "accept"
+      }
+    },
+    {
+      "case_id": "unresolved-incident-extraction",
+      "domain": "structured_extraction",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-unresolved-incident-extraction",
+        "objective": "Extract unresolved p1 incident records, order them chronologically, and return bounded identifier and system arrays.",
+        "inputs": {
+          "tickets": [
+            {
+              "ticket_id": "i-72",
+              "priority": "p1",
+              "state": "investigating",
+              "opened_at": "2026-08-14T08:10:00Z",
+              "system": "billing"
+            },
+            {
+              "ticket_id": "i-74",
+              "priority": "p2",
+              "state": "open",
+              "opened_at": "2026-08-14T08:05:00Z",
+              "system": "catalog"
+            },
+            {
+              "ticket_id": "i-77",
+              "priority": "p1",
+              "state": "open",
+              "opened_at": "2026-08-14T08:25:00Z",
+              "system": "identity"
+            },
+            {
+              "ticket_id": "i-79",
+              "priority": "p1",
+              "state": "resolved",
+              "opened_at": "2026-08-14T07:55:00Z",
+              "system": "search"
+            },
+            {
+              "ticket_id": "i-81",
+              "priority": "p1",
+              "state": "investigating",
+              "opened_at": "2026-08-14T08:40:00Z",
+              "system": "billing"
+            }
+          ],
+          "selectors": {
+            "priority": "p1",
+            "excluded_state": "resolved"
+          },
+          "ordering": {
+            "field": "opened_at",
+            "direction": "ascending"
+          },
+          "extraction_notes": [
+            "Select p1 tickets and then exclude exactly the resolved state.",
+            "Sort the remaining records by timestamp ascending.",
+            "Return unique affected systems in first-occurrence order."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "ticket_ids",
+              "affected_systems",
+              "unresolved_count"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "ticket_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "affected_systems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unresolved_count": {
+                "type": "integer"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "unresolved-p1-identifiers",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/ticket_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "sort_by",
+                    "args": [
+                      {
+                        "op": "filter",
+                        "args": [
+                          {
+                            "op": "filter",
+                            "args": [
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/tickets"
+                              },
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/selectors/priority"
+                              }
+                            ],
+                            "pointer": "/priority",
+                            "comparator": "equals"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/selectors/excluded_state"
+                          }
+                        ],
+                        "pointer": "/state",
+                        "comparator": "not_equals"
+                      }
+                    ],
+                    "pointer": "/opened_at",
+                    "order": "ascending"
+                  }
+                ],
+                "pointer": "/ticket_id"
+              }
+            },
+            {
+              "assertion_id": "unresolved-p1-systems",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/affected_systems"
+              },
+              "right": {
+                "op": "unique",
+                "args": [
+                  {
+                    "op": "project",
+                    "args": [
+                      {
+                        "op": "sort_by",
+                        "args": [
+                          {
+                            "op": "filter",
+                            "args": [
+                              {
+                                "op": "filter",
+                                "args": [
+                                  {
+                                    "op": "ref",
+                                    "source": "inputs",
+                                    "pointer": "/tickets"
+                                  },
+                                  {
+                                    "op": "ref",
+                                    "source": "inputs",
+                                    "pointer": "/selectors/priority"
+                                  }
+                                ],
+                                "pointer": "/priority",
+                                "comparator": "equals"
+                              },
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/selectors/excluded_state"
+                              }
+                            ],
+                            "pointer": "/state",
+                            "comparator": "not_equals"
+                          }
+                        ],
+                        "pointer": "/opened_at",
+                        "order": "ascending"
+                      }
+                    ],
+                    "pointer": "/system"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "unresolved-p1-count",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/unresolved_count"
+              },
+              "right": {
+                "op": "length",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/ticket_ids"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id unresolved-incident-extraction-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "unresolved-incident-extraction-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "unresolved-incident-extraction-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "ticket_ids": [
+          "i-72",
+          "i-77",
+          "i-81"
+        ],
+        "affected_systems": [
+          "billing",
+          "identity"
+        ],
+        "unresolved_count": 3
+      }
+    },
+    {
+      "case_id": "maintenance-window-timeline",
+      "domain": "temporal_reasoning",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-maintenance-window-timeline",
+        "objective": "Order maintenance events and reconcile the complete timezone-aware service window duration and final state.",
+        "inputs": {
+          "events": [
+            {
+              "event_id": "m3",
+              "timestamp": "2026-08-14T12:40:00Z",
+              "state": "validation"
+            },
+            {
+              "event_id": "m1",
+              "timestamp": "2026-08-14T10:00:00Z",
+              "state": "started"
+            },
+            {
+              "event_id": "m4",
+              "timestamp": "2026-08-14T13:45:00Z",
+              "state": "restored"
+            },
+            {
+              "event_id": "m2",
+              "timestamp": "2026-08-14T10:35:00Z",
+              "state": "upgrade"
+            }
+          ],
+          "window": {
+            "start": "2026-08-14T10:00:00Z",
+            "end": "2026-08-14T13:45:00Z"
+          },
+          "labels": {
+            "final_state": "restored",
+            "window_status": "completed"
+          },
+          "ordering": {
+            "field": "timestamp",
+            "direction": "ascending"
+          },
+          "maintenance_notes": [
+            "All timestamps use UTC and require no timezone conversion.",
+            "Sort events before projecting identifiers.",
+            "Window duration includes the full interval from start through end."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "ordered_event_ids",
+              "window_minutes",
+              "final_state",
+              "window_status"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "ordered_event_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "window_minutes": {
+                "type": "integer"
+              },
+              "final_state": {
+                "type": "string"
+              },
+              "window_status": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "maintenance-order",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/ordered_event_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "sort_by",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/events"
+                      }
+                    ],
+                    "pointer": "/timestamp",
+                    "order": "ascending"
+                  }
+                ],
+                "pointer": "/event_id"
+              }
+            },
+            {
+              "assertion_id": "maintenance-duration",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/window_minutes"
+              },
+              "right": {
+                "op": "duration_minutes",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/window/start"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/window/end"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "maintenance-final-state",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/final_state"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/final_state"
+              }
+            },
+            {
+              "assertion_id": "maintenance-window-status",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/window_status"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/window_status"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id maintenance-window-timeline-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "maintenance-window-timeline-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "maintenance-window-timeline-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "ordered_event_ids": [
+          "m1",
+          "m2",
+          "m3",
+          "m4"
+        ],
+        "window_minutes": 225,
+        "final_state": "restored",
+        "window_status": "completed"
+      }
+    },
+    {
+      "case_id": "sensor-consensus-evidence",
+      "domain": "evidence_synthesis",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-sensor-consensus-evidence",
+        "objective": "Aggregate verified sensor evidence, isolate strict-threshold anomalies, and return a bounded operational recommendation.",
+        "inputs": {
+          "readings": [
+            {
+              "reading_id": "s1",
+              "value": 42,
+              "quality": "verified"
+            },
+            {
+              "reading_id": "s2",
+              "value": 45,
+              "quality": "verified"
+            },
+            {
+              "reading_id": "s3",
+              "value": 44,
+              "quality": "verified"
+            },
+            {
+              "reading_id": "s4",
+              "value": 88,
+              "quality": "verified"
+            },
+            {
+              "reading_id": "s5",
+              "value": 43,
+              "quality": "verified"
+            },
+            {
+              "reading_id": "s6",
+              "value": 46,
+              "quality": "verified"
+            }
+          ],
+          "thresholds": {
+            "anomaly_above": 70,
+            "round_digits": 2
+          },
+          "labels": {
+            "anomaly_action": "inspect",
+            "normal_action": "continue"
+          },
+          "source_catalog": [
+            {
+              "source_id": "sensor-array",
+              "revision": 12
+            },
+            {
+              "source_id": "calibration-register",
+              "revision": 4
+            },
+            {
+              "source_id": "operations-thresholds",
+              "revision": 9
+            }
+          ],
+          "quality_notes": [
+            "All supplied readings passed calibration and must be included in the mean.",
+            "An anomaly requires a value strictly greater than the visible threshold.",
+            "Return anomaly identifiers in their original observation order."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "mean_value",
+              "anomaly_ids",
+              "anomaly_count",
+              "recommended_action"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "mean_value": {
+                "type": "number"
+              },
+              "anomaly_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "anomaly_count": {
+                "type": "integer"
+              },
+              "recommended_action": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "sensor-mean",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/mean_value"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "divide",
+                    "args": [
+                      {
+                        "op": "sum",
+                        "args": [
+                          {
+                            "op": "project",
+                            "args": [
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/readings"
+                              }
+                            ],
+                            "pointer": "/value"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "length",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/readings"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "sensor-anomaly-identifiers",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/anomaly_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "filter",
+                    "args": [
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/readings"
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/thresholds/anomaly_above"
+                      }
+                    ],
+                    "pointer": "/value",
+                    "comparator": "greater_than"
+                  }
+                ],
+                "pointer": "/reading_id"
+              }
+            },
+            {
+              "assertion_id": "sensor-anomaly-count",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/anomaly_count"
+              },
+              "right": {
+                "op": "length",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/anomaly_ids"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "sensor-action",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/recommended_action"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/anomaly_action"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id sensor-consensus-evidence-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "sensor-consensus-evidence-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "sensor-consensus-evidence-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "mean_value": 51.33,
+        "anomaly_ids": [
+          "s4"
+        ],
+        "anomaly_count": 1,
+        "recommended_action": "inspect"
+      }
+    },
+    {
+      "case_id": "capacity-headroom-reconciliation",
+      "domain": "quantitative_reconciliation",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-capacity-headroom-reconciliation",
+        "objective": "Derive peak demand, conservative capacity, headroom, and utilization from bounded planning series.",
+        "inputs": {
+          "hourly_demand": [
+            420,
+            510,
+            635,
+            590,
+            710,
+            680
+          ],
+          "available_capacity": [
+            800,
+            780,
+            760
+          ],
+          "rounding": {
+            "percentage_digits": 2,
+            "percentage_multiplier": 100
+          },
+          "labels": {
+            "positive_headroom": "sufficient",
+            "negative_headroom": "insufficient"
+          },
+          "planning_notes": [
+            "Use the highest observed demand as the planning peak.",
+            "Use the lowest available capacity as the conservative capacity.",
+            "Headroom is conservative capacity minus peak demand.",
+            "Utilization divides peak demand by conservative capacity."
+          ],
+          "window": {
+            "start_hour": 8,
+            "end_hour": 14,
+            "timezone": "UTC"
+          },
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "peak_demand",
+              "conservative_capacity",
+              "headroom",
+              "utilization_percent",
+              "capacity_status"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "peak_demand": {
+                "type": "integer"
+              },
+              "conservative_capacity": {
+                "type": "integer"
+              },
+              "headroom": {
+                "type": "integer"
+              },
+              "utilization_percent": {
+                "type": "number"
+              },
+              "capacity_status": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "peak-demand",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/peak_demand"
+              },
+              "right": {
+                "op": "max",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/hourly_demand"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "conservative-capacity",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/conservative_capacity"
+              },
+              "right": {
+                "op": "min",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/available_capacity"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "capacity-headroom",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/headroom"
+              },
+              "right": {
+                "op": "subtract",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/conservative_capacity"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/peak_demand"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "capacity-utilization",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/utilization_percent"
+              },
+              "right": {
+                "op": "round",
+                "args": [
+                  {
+                    "op": "multiply",
+                    "args": [
+                      {
+                        "op": "divide",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "result",
+                            "pointer": "/peak_demand"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "result",
+                            "pointer": "/conservative_capacity"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "ref",
+                        "source": "inputs",
+                        "pointer": "/rounding/percentage_multiplier"
+                      }
+                    ]
+                  }
+                ],
+                "digits": 2
+              }
+            },
+            {
+              "assertion_id": "capacity-status",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/capacity_status"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/positive_headroom"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id capacity-headroom-reconciliation-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "capacity-headroom-reconciliation-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "capacity-headroom-reconciliation-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "peak_demand": 710,
+        "conservative_capacity": 760,
+        "headroom": 50,
+        "utilization_percent": 93.42,
+        "capacity_status": "sufficient"
+      }
+    },
+    {
+      "case_id": "expired-warranty-extraction",
+      "domain": "structured_extraction",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-expired-warranty-extraction",
+        "objective": "Identify assets with warranties strictly before a cutoff, sort them by expiry, and project identifiers and regions.",
+        "inputs": {
+          "assets": [
+            {
+              "asset_id": "a-12",
+              "warranty_end": "2026-05-30",
+              "region": "north",
+              "category": "router"
+            },
+            {
+              "asset_id": "a-18",
+              "warranty_end": "2026-11-02",
+              "region": "south",
+              "category": "switch"
+            },
+            {
+              "asset_id": "a-31",
+              "warranty_end": "2026-08-01",
+              "region": "north",
+              "category": "server"
+            },
+            {
+              "asset_id": "a-44",
+              "warranty_end": "2026-07-12",
+              "region": "west",
+              "category": "router"
+            },
+            {
+              "asset_id": "a-52",
+              "warranty_end": "2027-01-15",
+              "region": "west",
+              "category": "server"
+            }
+          ],
+          "cutoff": {
+            "exclusive_date": "2026-08-15"
+          },
+          "ordering": {
+            "field": "warranty_end",
+            "direction": "ascending"
+          },
+          "extraction_notes": [
+            "Expired means warranty_end strictly before the cutoff date.",
+            "Sort expired assets by warranty_end ascending before projection.",
+            "Return unique regions following that sorted asset order."
+          ],
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "expired_asset_ids",
+              "regions",
+              "expired_count"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "expired_asset_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "regions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "expired_count": {
+                "type": "integer"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "expired-asset-identifiers",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/expired_asset_ids"
+              },
+              "right": {
+                "op": "project",
+                "args": [
+                  {
+                    "op": "sort_by",
+                    "args": [
+                      {
+                        "op": "filter",
+                        "args": [
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/assets"
+                          },
+                          {
+                            "op": "ref",
+                            "source": "inputs",
+                            "pointer": "/cutoff/exclusive_date"
+                          }
+                        ],
+                        "pointer": "/warranty_end",
+                        "comparator": "less_than"
+                      }
+                    ],
+                    "pointer": "/warranty_end",
+                    "order": "ascending"
+                  }
+                ],
+                "pointer": "/asset_id"
+              }
+            },
+            {
+              "assertion_id": "expired-asset-regions",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/regions"
+              },
+              "right": {
+                "op": "unique",
+                "args": [
+                  {
+                    "op": "project",
+                    "args": [
+                      {
+                        "op": "sort_by",
+                        "args": [
+                          {
+                            "op": "filter",
+                            "args": [
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/assets"
+                              },
+                              {
+                                "op": "ref",
+                                "source": "inputs",
+                                "pointer": "/cutoff/exclusive_date"
+                              }
+                            ],
+                            "pointer": "/warranty_end",
+                            "comparator": "less_than"
+                          }
+                        ],
+                        "pointer": "/warranty_end",
+                        "order": "ascending"
+                      }
+                    ],
+                    "pointer": "/region"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "expired-asset-count",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/expired_count"
+              },
+              "right": {
+                "op": "length",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/expired_asset_ids"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id expired-warranty-extraction-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "expired-warranty-extraction-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "expired-warranty-extraction-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "expired_asset_ids": [
+          "a-12",
+          "a-44",
+          "a-31"
+        ],
+        "regions": [
+          "north",
+          "west"
+        ],
+        "expired_count": 3
+      }
+    },
+    {
+      "case_id": "sla-breach-timeline",
+      "domain": "temporal_reasoning",
+      "contract": {
+        "schema_version": "1.0",
+        "contract_id": "runtime-stability-sla-breach-timeline",
+        "objective": "Compute elapsed and overdue minutes for an SLA interval and return the bounded breach classification.",
+        "inputs": {
+          "incident": {
+            "opened_at": "2026-08-10T09:15:00Z",
+            "resolved_at": "2026-08-10T12:50:00Z"
+          },
+          "sla": {
+            "target_minutes": 180
+          },
+          "labels": {
+            "breach_value": true,
+            "breach_state": "breached"
+          },
+          "timeline_notes": [
+            "Elapsed time is resolved_at minus opened_at in minutes.",
+            "Overdue minutes are elapsed time minus the SLA target.",
+            "The supplied breach label applies because the visible elapsed interval exceeds the target."
+          ],
+          "audit_context": {
+            "timezone": "UTC",
+            "severity": "priority-1",
+            "clock_source": "monotonic-export"
+          },
+          "result_spec": {
+            "spec_version": "2.0",
+            "type": "object",
+            "required": [
+              "elapsed_minutes",
+              "overdue_minutes",
+              "breached",
+              "breach_state"
+            ],
+            "additional_properties": false,
+            "properties": {
+              "elapsed_minutes": {
+                "type": "integer"
+              },
+              "overdue_minutes": {
+                "type": "integer"
+              },
+              "breached": {
+                "type": "boolean"
+              },
+              "breach_state": {
+                "type": "string"
+              }
+            }
+          },
+          "semantic_assertions": [
+            {
+              "assertion_id": "sla-elapsed",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/elapsed_minutes"
+              },
+              "right": {
+                "op": "duration_minutes",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/incident/opened_at"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/incident/resolved_at"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "sla-overdue",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/overdue_minutes"
+              },
+              "right": {
+                "op": "subtract",
+                "args": [
+                  {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/elapsed_minutes"
+                  },
+                  {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/sla/target_minutes"
+                  }
+                ]
+              }
+            },
+            {
+              "assertion_id": "sla-breach-value",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/breached"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/breach_value"
+              }
+            },
+            {
+              "assertion_id": "sla-breach-state",
+              "operator": "equals",
+              "left": {
+                "op": "ref",
+                "source": "result",
+                "pointer": "/breach_state"
+              },
+              "right": {
+                "op": "ref",
+                "source": "inputs",
+                "pointer": "/labels/breach_state"
+              }
+            }
+          ]
+        },
+        "constraints": [
+          "Use only the supplied records, rules, and reference values.",
+          "Apply every stated arithmetic, filtering, ordering, and date rule before producing the result.",
+          "Return exactly the keys and nested types declared by result_spec; do not add explanatory result fields.",
+          "Include an evidence item with evidence_id sla-breach-timeline-source that cites the supplied diagnostic records.",
+          "Do not request actions, access external systems, or infer missing values."
+        ],
+        "acceptance_criteria": [
+          {
+            "criterion_id": "sla-breach-timeline-result",
+            "description": "The structured result satisfies every visible deterministic relation.",
+            "required_evidence": [
+              "sla-breach-timeline-source"
+            ]
+          }
+        ],
+        "allowed_actions": [],
+        "forbidden_actions": [
+          "filesystem.read",
+          "network.access",
+          "shell.execute",
+          "external.publish"
+        ],
+        "risk_level": "low",
+        "max_attempts": 2,
+        "requires_human_approval": false
+      },
+      "expected_result": {
+        "elapsed_minutes": 215,
+        "overdue_minutes": 35,
+        "breached": true,
+        "breach_state": "breached"
+      }
+    }
+  ]
+}

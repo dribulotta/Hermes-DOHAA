@@ -117,6 +117,13 @@ See [Comparative quality evaluation](docs/evaluation.md) for the experimental
 controls, contract-visible result specifications, repeated trials, sampling
 policy, protected-holdout protocol, metrics, and interpretation limits.
 
+Before freezing a protected multi-model evaluation, run the
+[public runtime-stability diagnostic](docs/runtime-stability-diagnostics.md).
+It provides an independently authored, four-domain smoke and soak workload for
+checking timeouts, connection failures, usage telemetry, and model isolation.
+Because it is public and repeatable, it is operational evidence only and not a
+generalization benchmark.
+
 An aggregate report from a protected 40-case evaluation recorded 100% final
 strict passage for DOHAA versus 82.5% for direct response, with seven paired
 wins and no losses. This bounded result is not evidence of universal
