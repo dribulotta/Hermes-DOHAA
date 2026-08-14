@@ -162,6 +162,20 @@ The public example exercises the runner but is not a protected benchmark:
 The output path must not already exist. The runner creates the result with mode
 `0600` and never overwrites an earlier evaluation.
 
+### Public runtime-stability gate
+
+Before authoring or freezing another protected multi-model holdout, use the
+[public runtime-stability diagnostic](runtime-stability-diagnostics.md) to
+exercise the exact model artifacts and server configuration. Its 16 original
+public cases cover evidence synthesis, quantitative reconciliation, structured
+extraction, and temporal reasoning in an interleaved order. The fixed smoke and
+soak phases use a 300-second per-request deadline and require zero runtime
+failures, complete usage telemetry, and verified model isolation.
+
+This diagnostic is repeatable development evidence, not a protected benchmark.
+Passing it does not support a quality or generalization claim, and none of its
+cases may be counted as an independent holdout.
+
 `--model-artifact-id` is recorded evidence supplied by the operator; the
 runner cannot prove that the model alias actually resolves to that artifact.
 Verify and preserve the model-server configuration independently.

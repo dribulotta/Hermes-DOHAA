@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "diagnostic_id": "public-runtime-stability-v1",
+  "suite_id": "public-runtime-stability-v1",
+  "suite_canonical_sha256": "ca9d584eba1bafa0c4e6a782bb9ac8e9369ab3c46e96d6185e99e5306c114ae1",
+  "case_count": 16,
+  "domains": [
+    "evidence_synthesis",
+    "quantitative_reconciliation",
+    "structured_extraction",
+    "temporal_reasoning"
+  ],
+  "domain_counts": {
+    "evidence_synthesis": 4,
+    "quantitative_reconciliation": 4,
+    "structured_extraction": 4,
+    "temporal_reasoning": 4
+  },
+  "case_order": [
+    "inventory-evidence-reconciliation",
+    "program-budget-reconciliation",
+    "open-order-extraction",
+    "incident-timeline-reconstruction",
+    "service-impact-evidence",
+    "energy-billing-reconciliation",
+    "critical-control-extraction",
+    "business-day-review-deadline",
+    "procurement-receipt-evidence",
+    "freight-weight-reconciliation",
+    "unresolved-incident-extraction",
+    "maintenance-window-timeline",
+    "sensor-consensus-evidence",
+    "capacity-headroom-reconciliation",
+    "expired-warranty-extraction",
+    "sla-breach-timeline"
+  ],
+  "timeout_seconds": 300,
+  "smoke_repetitions": 1,
+  "soak_repetitions": 3,
+  "expected_requests_per_model": {
+    "smoke_if_dohaa_uses_one_call": 64,
+    "smoke_maximum": 80,
+    "soak_if_dohaa_uses_one_call": 192,
+    "soak_maximum": 240
+  },
+  "scope": "runtime stability only; public development evidence"
+}
