@@ -132,6 +132,15 @@ All evaluable criteria passed, but the composite assessment remained
 unevaluable. See the
 [protected multi-model holdout v1 report](docs/evaluation-results/protected-multimodel-holdout-v1.md).
 
+A separately frozen 48-case Candidate 04 run did not reproduce that result.
+DOHAA averaged 52.78% final strict passage versus 51.39% for direct response,
+with three aggregate paired wins, one loss, 44 ties, and an exact two-sided
+sign-test p-value of `0.625`. Its assessment was `not_passed`: two criteria
+failed, the token-ratio criterion was unevaluable, and 215 condition outcomes
+ended in runtime failures, dominated by timeouts and connection failures in
+the comparator slots. See the
+[Candidate 04 report](docs/evaluation-results/protected-multimodel-holdout-v1-c04.md).
+
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
 ## Deployment and operations

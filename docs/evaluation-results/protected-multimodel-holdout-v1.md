@@ -11,6 +11,11 @@ success assessment nevertheless remained `not_passed` because incomplete
 runtime token reporting made one cost criterion unevaluable. This distinction
 is part of the result and is not overridden in this report.
 
+A subsequent separately frozen run, Candidate 04, did not reproduce this
+quality result and was severely limited by runtime failures in both comparator
+slots. Both archived outcomes must be considered; see the
+[Candidate 04 aggregate report](protected-multimodel-holdout-v1-c04.md).
+
 ## Evaluation record
 
 | Field | Value |
