@@ -150,6 +150,20 @@ the comparator slots. See the
 
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
+## Operational case study
+
+The
+[HPSEC bounded cybersecurity executor](docs/case-studies/hpsec-bounded-cybersecurity-executor-v1.md)
+documents a private-laboratory deployment in which a specialized Hermes profile
+could perform useful read-only defensive audits while an external
+forced-command boundary rejected the tested arbitrary commands, shell
+injection, privilege expansion, and out-of-scope targets.
+
+This is retrospective engineering evidence for DOHAA's separation of cognition
+from action authority. It did not run the current `DohaaController`, was
+iteratively refined after observed failures, and is not presented as a
+preregistered comparative evaluation or independent security proof.
+
 ## Deployment and operations
 
 The repository includes documentation and sanitized reference templates for
