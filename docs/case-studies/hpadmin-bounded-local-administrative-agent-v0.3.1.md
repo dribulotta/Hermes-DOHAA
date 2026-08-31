@@ -235,6 +235,48 @@ envelope incompatibility, permission mistakes, latency and an incorrect
 model-generated sum. The successful run is therefore development and
 integration evidence, not fresh confirmatory evidence.
 
+## Comparative context
+
+Hermes-DOHAA already includes a comparative evaluation runner with three
+conditions that keep the model and task inputs fixed:
+
+| Condition | Cognitive calls | Repair signal |
+| --- | ---: | --- |
+| `direct` | 1 | None |
+| `self_reflection` | 2 | First proposal plus a generic request to review it |
+| `dohaa` | At most 2 | Only deterministic failed-gate feedback |
+
+`self_reflection` is uncontrolled model self-review, not a different reasoning
+model. The published evaluations used `reasoning_effort=none`; their comparison
+tests whether a generic second model pass provides the same benefit as bounded,
+deterministic feedback and repair.
+
+Earlier protected evaluations produced mixed, bounded evidence:
+
+- [Protected semantic holdout v3](../evaluation-results/protected-semantic-holdout-v3.md)
+  evaluated 40 cases with one frozen model: direct response passed 82.5%,
+  self-reflection 85.0%, and DOHAA 100.0%. DOHAA recorded 7 wins, no losses and
+  33 ties against direct response (`p=0.015625`), and 6 wins, no losses and 34
+  ties against self-reflection (`p=0.03125`).
+- [Protected multi-model holdout v1](../evaluation-results/protected-multimodel-holdout-v1.md)
+  evaluated 48 cases across three frozen local models: direct response averaged
+  60.42%, self-reflection 72.92%, and DOHAA 94.44%. The primary quality result
+  was positive, but the composite protocol status remained `not_passed` because
+  the predeclared token-ratio criterion was unevaluable.
+- [Candidate 04](../evaluation-results/protected-multimodel-holdout-v1-c04.md)
+  did not reproduce the earlier multi-model result: direct response averaged
+  51.39%, self-reflection 45.83%, and DOHAA 52.78%. DOHAA had 3 wins, 1 loss and
+  44 ties against direct response (`p=0.625`); the run was `not_passed` and
+  severely limited by inference-service failures.
+
+Those results belong to separate protected synthetic suites and cannot be
+attributed to HPADMIN. This HPADMIN report is an operational case study, not a
+three-condition quality comparison. A valid domain-specific comparison requires
+a new prospectively frozen administrative suite and the same `direct`,
+`self_reflection`, and `dohaa` conditions. The six development documents used
+here have already informed implementation decisions and cannot be reused as
+fresh independent confirmation.
+
 ## Relationship to Hermes-DOHAA
 
 The case operationalizes several DOHAA invariants but remains outside the
