@@ -212,7 +212,7 @@ repository.
   becoming system evidence;
 - document text can be treated as untrusted data rather than instructions;
 - allowed operations and negative probes can share one auditable interface;
-- human approval can remain an invariant of generated proposals; and
+- human approval can remain an invariant of generated proposals;
 - pre/post hashes strengthen the evidence behind non-modification claims; and
 - a useful bounded workflow can complete with local inference on modest,
   owner-operated infrastructure while sensitive data and external authority
