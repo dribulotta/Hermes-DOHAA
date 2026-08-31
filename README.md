@@ -14,6 +14,8 @@ The architecture is described in the following paper:
 
 AAHOD/DOHAA emerged from operational constraints involving inference budgets, latency, queues, continuity, validation, and traceability. It generalizes an earlier public tri-layer architecture into an explicit distribution of authority across control, cognition, assurance, evidence, and action.
 
+Those constraints came from a concrete design goal: useful agents should be able to run locally on modest, accessible, owner-operated hardware while sensitive data, infrastructure, and action authority remain under the deployer's control. DOHAA therefore prioritizes correctness, privacy, bounded authority, traceable evidence, recoverability, and human control before optimizing inference speed.
+
 Hermes-DOHAA is **not the architecture itself and DOHAA is not a Hermes feature**. This repository is an open-source reference implementation that applies part of the architecture to Hermes Agent. The paper is a non-peer-reviewed preprint and defines an empirical validation protocol; neither the paper nor this repository should be read as proof that DOHAA is already superior to alternative architectures.
 
 See [Origin and theoretical foundations](docs/origin-and-foundations.md) for the complete provenance, formal definition, implementation mapping, and scientific status.
@@ -150,7 +152,7 @@ the comparator slots. See the
 
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
-## Operational case study
+## Operational case studies
 
 The
 [HPSEC bounded cybersecurity executor](docs/case-studies/hpsec-bounded-cybersecurity-executor-v1.md)
@@ -163,6 +165,22 @@ This is retrospective engineering evidence for DOHAA's separation of cognition
 from action authority. It did not run the current `DohaaController`, was
 iteratively refined after observed failures, and is not presented as a
 preregistered comparative evaluation or independent security proof.
+
+The
+[HPADMIN bounded local administrative agent](docs/case-studies/hpadmin-bounded-local-administrative-agent-v0.3.1.md)
+documents a second private-laboratory deployment. A local Hermes profile on
+modest, operator-controlled infrastructure classified six synthetic
+administrative documents through deterministic validation, ignored one tested
+embedded instruction, preserved every original document hash, generated only
+non-executable proposals, and kept payment, banking, email, and original
+modification authority disabled.
+
+The associated
+[sanitized machine-readable evidence](docs/case-studies/evidence/hpadmin-v0.3.1.json)
+reports the observed results and latency. The run prioritized correctness,
+privacy, governed authority, and accessible local deployment over inference
+speed. It remains retrospective development evidence and did not run the
+repository's current `DohaaController`.
 
 ## Deployment and operations
 
