@@ -152,6 +152,16 @@ the comparator slots. See the
 
 The proposal phase must use a restricted Hermes profile and a sandbox. A prompt instruction is not a security boundary.
 
+A separate HPADMIN Comparative V3 evaluation completed successfully as an
+execution but received a preregistered assessment of `NOT_PASSED`. DOHAA
+finished at 16/40 strict passes versus 15/40 for direct response, with one
+paired win, no losses, 39 ties, and an exact two-sided sign-test p-value of
+`1.0`. Runtime, integrity, input-identity, oracle-isolation, and feedback-audit
+checks passed, but the primary statistical threshold did not. The full public
+bundle retires the suite permanently. The record also invalidates the HPADMIN
+V2 primary claim because six of its eight wins relied on oracle-exclusive
+feedback. See the [HPADMIN Comparative V3 public result](docs/evaluation-results/hpadmin-comparative-v3.md).
+
 ## Operational case studies
 
 The
