@@ -462,9 +462,33 @@ class SemanticAssertionTests(unittest.TestCase):
         reserved["right"] = ref("inputs", "/result_spec")
         invalid.append(reserved)
 
+        repair_control = copy.deepcopy(base)
+        repair_control["right"] = ref("inputs", "/repair_policy")
+        invalid.append(repair_control)
+
         malformed_pointer = copy.deepcopy(base)
         malformed_pointer["right"] = ref("inputs", "/bad~2pointer")
         invalid.append(malformed_pointer)
+
+        oversized_pointer = copy.deepcopy(base)
+        oversized_pointer["right"] = ref("inputs", "/" + "x" * 2048)
+        invalid.append(oversized_pointer)
+
+        padded_description = copy.deepcopy(base)
+        padded_description["description"] = " " + "x" * 1024 + " "
+        invalid.append(padded_description)
+
+        padded_group = copy.deepcopy(base)
+        padded_group["repair_group"] = " " + "x" * 128 + " "
+        invalid.append(padded_group)
+
+        null_description = copy.deepcopy(base)
+        null_description["description"] = None
+        invalid.append(null_description)
+
+        null_group = copy.deepcopy(base)
+        null_group["repair_group"] = None
+        invalid.append(null_group)
 
         unknown_field = copy.deepcopy(base)
         unknown_field["right"]["value"] = "not-allowed"

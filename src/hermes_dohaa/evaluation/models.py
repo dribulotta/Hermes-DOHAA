@@ -11,6 +11,7 @@ from typing import Any, Mapping
 from hermes_dohaa.contracts.models import ContractError, TaskContract
 from hermes_dohaa.assurance.result_spec import parse_result_spec
 from hermes_dohaa.assurance.semantic_assertions import parse_semantic_assertions
+from hermes_dohaa.controller.repair_policy import RuleAwareRepairPolicy
 
 
 class EvaluationSuiteError(ValueError):
@@ -66,6 +67,13 @@ class EvaluationCase:
             except ValueError as exc:
                 raise EvaluationSuiteError(
                     f"invalid semantic_assertions: {exc}"
+                ) from exc
+        if "repair_policy" in contract.inputs:
+            try:
+                RuleAwareRepairPolicy.from_contract(contract)
+            except ValueError as exc:
+                raise EvaluationSuiteError(
+                    f"invalid repair_policy: {exc}"
                 ) from exc
         domain = _required_text(raw, "domain")
         if domain == "policy_decision" and (

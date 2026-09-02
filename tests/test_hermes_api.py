@@ -154,6 +154,10 @@ class HermesApiTests(unittest.TestCase):
             ],
         )
         user_payload = json.loads(body["messages"][1]["content"])
+        self.assertNotIn(
+            "repair_scope.editable_paths",
+            body["messages"][0]["content"],
+        )
         self.assertEqual(
             user_payload["verifier_feedback"],
             [
@@ -173,6 +177,75 @@ class HermesApiTests(unittest.TestCase):
             HermesApiRuntime(reasoning_effort="unbounded")
         with self.assertRaises(ValueError):
             HermesApiRuntime(reasoning_effort=1)  # type: ignore[arg-type]
+
+    def test_runtime_repair_includes_baseline_and_value_free_scope(self):
+        response = io.BytesIO(
+            json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "result": {"score": 11, "stable": True},
+                                        "claims": [],
+                                        "evidence": [],
+                                        "requested_actions": [],
+                                    }
+                                )
+                            }
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+        )
+        contract = Mock()
+        contract.to_dict.return_value = {"contract_id": "development-only"}
+        baseline = parse_proposal_content(
+            '{"result":{"score":3,"stable":true},"claims":[],'
+            '"evidence":[],"requested_actions":[]}'
+        )
+        feedback = VerifierFeedback(
+            gate="repair_policy",
+            code="repair.scoped_retry",
+            reason="Revise only the verifier-authorized scope.",
+            details={
+                "repair_scope": {
+                    "schema_version": "1.0",
+                    "failed_rule_ids": ["dev.minimum"],
+                    "rule_ids": ["dev.minimum"],
+                    "editable_paths": ["/result/score"],
+                    "atomic_groups": [],
+                    "source_pointers": [
+                        {
+                            "source": "contract.inputs",
+                            "pointer": "/minimum",
+                        }
+                    ],
+                }
+            },
+        )
+
+        with patch("urllib.request.urlopen", return_value=response) as urlopen:
+            proposal = HermesApiRuntime().repair(
+                contract,
+                baseline,
+                (feedback,),
+                feedback.details["repair_scope"],
+            )
+
+        body = json.loads(urlopen.call_args.args[0].data)
+        user_payload = json.loads(body["messages"][1]["content"])
+        self.assertEqual(user_payload["previous_proposal"], baseline.to_dict())
+        self.assertEqual(
+            user_payload["repair_scope"]["editable_paths"],
+            ["/result/score"],
+        )
+        self.assertEqual(proposal.result["score"], 11)
+        self.assertIn("Preserve every unlisted", body["messages"][0]["content"])
+        serialized = json.dumps(user_payload)
+        self.assertNotIn("expected_value", serialized)
+        self.assertNotIn("actual_value", serialized)
 
     def test_runtime_rejects_invalid_sampling_policy(self):
         with self.assertRaises(ValueError):

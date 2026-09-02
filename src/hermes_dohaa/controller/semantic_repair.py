@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from hermes_dohaa.assurance.result_spec import json_equal
 from hermes_dohaa.assurance.semantic_assertions import (
@@ -32,6 +32,8 @@ class DeterministicSemanticRepair:
 def propose_deterministic_semantic_repair(
     contract: TaskContract,
     proposal: Proposal,
+    *,
+    editable_paths: Iterable[str] | None = None,
 ) -> DeterministicSemanticRepair | None:
     """Build a bounded repair or return ``None`` without changing the proposal.
 
@@ -49,6 +51,7 @@ def propose_deterministic_semantic_repair(
             contract.inputs,
             proposal.result,
             assertions,
+            editable_paths=editable_paths,
         )
         if not replacements:
             return None
@@ -86,13 +89,22 @@ def _collect_replacements(
     inputs: Mapping[str, Any],
     result: Any,
     assertions: tuple[SemanticAssertion, ...],
+    *,
+    editable_paths: Iterable[str] | None,
 ) -> dict[str, tuple[Any, list[str]]]:
+    allowed = None if editable_paths is None else tuple(editable_paths)
     replacements: dict[str, tuple[Any, list[str]]] = {}
     for assertion in assertions:
         target = _repair_target(assertion)
         if target is None:
             continue
         pointer, expression = target
+        proposal_path = "/result" if not pointer else f"/result{pointer}"
+        if allowed is not None and not any(
+            proposal_path == path or proposal_path.startswith(path + "/")
+            for path in allowed
+        ):
+            continue
         current = _resolve_pointer(result, pointer, "result")
         expected = _evaluate(expression, inputs, None)
         if json_equal(current, expected):

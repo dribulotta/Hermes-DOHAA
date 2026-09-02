@@ -316,7 +316,8 @@
           ]
         },
         "pointer": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 2048
         },
         "comparator": {
           "enum": [
@@ -381,7 +382,20 @@
         "assertion_id": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 128
+          "maxLength": 128,
+          "pattern": "\\S"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "\\S"
+        },
+        "repair_group": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "\\S"
         },
         "operator": {
           "enum": [
@@ -408,6 +422,42 @@
       "maxItems": 64,
       "items": {
         "$ref": "#/$defs/semanticAssertion"
+      }
+    },
+    "proposalPointer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^/(?:result|claims|evidence|requested_actions)(?:/(?:[^~/]|~[01])*)*$"
+    },
+    "repairPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "mode"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "mode": {
+          "const": "rule_aware"
+        },
+        "preserve_unlisted": {
+          "const": true
+        },
+        "require_strict_improvement": {
+          "const": true
+        },
+        "immutable_paths": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/proposalPointer"
+          }
+        }
       }
     }
   },
@@ -473,6 +523,9 @@
                       },
                       "semantic_assertions": {
                         "$ref": "#/$defs/semanticAssertions"
+                      },
+                      "repair_policy": {
+                        "$ref": "#/$defs/repairPolicy"
                       }
                     }
                   }

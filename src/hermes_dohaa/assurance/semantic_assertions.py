@@ -55,6 +55,9 @@ MAX_COLLECTION_ITEMS = 10_000
 MAX_REPORTED_VIOLATIONS = 100
 MAX_DATE_OFFSET_DAYS = 3_660
 MAX_ASSERTION_ID_LENGTH = 128
+MAX_ASSERTION_DESCRIPTION_LENGTH = 1024
+MAX_REPAIR_GROUP_LENGTH = 128
+MAX_POINTER_LENGTH = 2048
 MAX_ABSOLUTE_NUMBER = 10**100
 
 
@@ -76,6 +79,8 @@ class SemanticAssertion:
     operator: str
     left: SemanticExpression
     right: SemanticExpression
+    description: str | None = None
+    repair_group: str | None = None
 
 
 class SemanticEvaluationError(RuntimeError):
@@ -107,21 +112,47 @@ def parse_semantic_assertions(raw: Any) -> tuple[SemanticAssertion, ...]:
             raise ValueError("each semantic assertion must be an object")
         _require_exact_fields(
             item,
-            {"assertion_id", "operator", "left", "right"},
+            {
+                "assertion_id",
+                "operator",
+                "left",
+                "right",
+                "description",
+                "repair_group",
+            },
             "semantic assertion",
+            required={"assertion_id", "operator", "left", "right"},
         )
         assertion_id = item.get("assertion_id")
         if not isinstance(assertion_id, str) or not assertion_id.strip():
             raise ValueError("assertion_id must be a non-empty string")
-        assertion_id = assertion_id.strip()
         if len(assertion_id) > MAX_ASSERTION_ID_LENGTH:
             raise ValueError(
                 f"assertion_id exceeds maximum length "
                 f"{MAX_ASSERTION_ID_LENGTH}"
             )
+        assertion_id = assertion_id.strip()
         if assertion_id in identifiers:
             raise ValueError("semantic assertion IDs must be unique")
         identifiers.add(assertion_id)
+        description = (
+            _optional_text(
+                item["description"],
+                "semantic assertion description",
+                MAX_ASSERTION_DESCRIPTION_LENGTH,
+            )
+            if "description" in item
+            else None
+        )
+        repair_group = (
+            _optional_text(
+                item["repair_group"],
+                "semantic assertion repair_group",
+                MAX_REPAIR_GROUP_LENGTH,
+            )
+            if "repair_group" in item
+            else None
+        )
         operator = item.get("operator")
         if operator not in ASSERTION_OPERATORS:
             raise ValueError(f"unsupported semantic assertion operator {operator!r}")
@@ -132,7 +163,14 @@ def parse_semantic_assertions(raw: Any) -> tuple[SemanticAssertion, ...]:
                 "each semantic assertion must reference the proposal result"
             )
         parsed.append(
-            SemanticAssertion(assertion_id, operator, left, right)
+            SemanticAssertion(
+                assertion_id,
+                operator,
+                left,
+                right,
+                description,
+                repair_group,
+            )
         )
     return tuple(parsed)
 
@@ -141,9 +179,12 @@ def validate_semantic_assertions(
     inputs: Mapping[str, Any],
     result: Any,
     assertions: tuple[SemanticAssertion, ...],
+    *,
+    include_repair_scope: bool = False,
 ) -> dict[str, Any] | None:
     """Return value-free diagnostics for failed or unevaluable assertions."""
     violations: list[dict[str, Any]] = []
+    failed_rule_ids: list[str] = []
     total = 0
     for assertion in assertions:
         try:
@@ -152,6 +193,7 @@ def validate_semantic_assertions(
             passed = _compare(assertion.operator, left, right)
         except SemanticEvaluationError as exc:
             total += 1
+            failed_rule_ids.append(assertion.assertion_id)
             _append(
                 violations,
                 {
@@ -164,6 +206,7 @@ def validate_semantic_assertions(
             continue
         if not passed:
             total += 1
+            failed_rule_ids.append(assertion.assertion_id)
             _append(
                 violations,
                 {
@@ -174,12 +217,171 @@ def validate_semantic_assertions(
             )
     if not total:
         return None
-    return {
+    details = {
         "violation_count": total,
         "reported_violation_count": len(violations),
         "truncated": total > len(violations),
         "violations": violations,
     }
+    if include_repair_scope:
+        repair_scope = _semantic_repair_scope(
+            assertions,
+            failed_rule_ids,
+            result,
+        )
+        if repair_scope is not None:
+            details["repair_scope"] = repair_scope
+    return details
+
+
+def _semantic_repair_scope(
+    assertions: tuple[SemanticAssertion, ...],
+    failed_rule_ids: list[str],
+    result: Any,
+) -> dict[str, Any] | None:
+    """Describe one value-free, dependency-closed repair unit.
+
+    Repairing every independent failure in one call makes it impossible to
+    prove that an unresolved rule did not become materially worse.  Select the
+    first failed rule deterministically, then close over explicit repair groups
+    and overlapping result pointers.  Other disjoint failures are handled on a
+    later bounded attempt.
+    """
+    by_id = {item.assertion_id: item for item in assertions}
+    targets = {
+        item.assertion_id: _repair_target_path(item)
+        for item in assertions
+    }
+    first_id = failed_rule_ids[0]
+    if targets[first_id] is None:
+        return None
+
+    first_group = by_id[first_id].repair_group
+    editable_ids = {
+        item.assertion_id
+        for item in assertions
+        if item.assertion_id == first_id
+        or (
+            first_group is not None
+            and item.repair_group == first_group
+        )
+    }
+    if any(targets[rule_id] is None for rule_id in editable_ids):
+        return None
+    editable_paths = sorted(
+        {targets[rule_id] for rule_id in editable_ids}
+    )
+    try:
+        for path in editable_paths:
+            pointer = path[len("/result") :]
+            _resolve_pointer(result, pointer, "result")
+    except SemanticEvaluationError:
+        return None
+    if any(
+        _pointers_overlap(left, right)
+        for index, left in enumerate(editable_paths)
+        for right in editable_paths[index + 1 :]
+    ):
+        return None
+
+    # Include every assertion that reads an editable field.  Its target stays
+    # read-only unless the contract explicitly places it in the same group.
+    selected_ids = set(editable_ids)
+    for item in assertions:
+        referenced_paths = {
+            _proposal_result_path(pointer)
+            for pointer in (
+                *_reference_pointers(item.left, "result"),
+                *_reference_pointers(item.right, "result"),
+            )
+        }
+        if any(
+            _pointers_overlap(reference, editable)
+            for reference in referenced_paths
+            for editable in editable_paths
+        ):
+            selected_ids.add(item.assertion_id)
+
+    selected = tuple(
+        item for item in assertions if item.assertion_id in selected_ids
+    )
+    source_pointers = sorted(
+        {
+            pointer
+            for item in selected
+            for pointer in (
+                *_reference_pointers(item.left, "inputs"),
+                *_reference_pointers(item.right, "inputs"),
+            )
+        }
+    )
+    atomic_groups = (
+        [
+            {
+                "group_id": first_group,
+                "editable_paths": editable_paths,
+            }
+        ]
+        if first_group is not None
+        else []
+    )
+    return {
+        "schema_version": "1.0",
+        "failed_rule_ids": sorted(set(failed_rule_ids) & selected_ids),
+        "rule_ids": sorted(selected_ids),
+        "editable_paths": editable_paths,
+        "atomic_groups": atomic_groups,
+        "source_pointers": [
+            {"source": "contract.inputs", "pointer": pointer}
+            for pointer in source_pointers
+        ],
+    }
+
+
+def _pointers_overlap(left: str, right: str) -> bool:
+    return (
+        left == right
+        or left.startswith(right + "/")
+        or right.startswith(left + "/")
+    )
+
+
+def _repair_target_path(assertion: SemanticAssertion) -> str | None:
+    left = _direct_result_path(assertion.left)
+    right = _direct_result_path(assertion.right)
+    if (left is None) == (right is None):
+        return None
+    target = left if left is not None else right
+    other = assertion.right if left is not None else assertion.left
+    other_paths = {
+        _proposal_result_path(pointer)
+        for pointer in _reference_pointers(other, "result")
+    }
+    if any(_pointers_overlap(target, path) for path in other_paths):
+        return None
+    return target
+
+
+def _direct_result_path(expression: SemanticExpression) -> str | None:
+    if expression.op != "ref" or expression.source != "result":
+        return None
+    return _proposal_result_path(expression.pointer or "")
+
+
+def _reference_pointers(
+    expression: SemanticExpression,
+    source: str,
+) -> tuple[str, ...]:
+    pointers = []
+    if expression.op == "ref" and expression.source == source:
+        pointers.append(expression.pointer or "")
+    for argument in expression.args:
+        pointers.extend(_reference_pointers(argument, source))
+    return tuple(pointers)
+
+
+def _proposal_result_path(pointer: str) -> str:
+    return "/result" if not pointer else f"/result{pointer}"
 
 
 def _parse_expression(
@@ -516,6 +718,10 @@ def _resolve_pointer(root: Any, pointer: str, source: str) -> Any:
 def _validate_pointer(value: Any, label: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{label} must be a JSON Pointer string")
+    if len(value) > MAX_POINTER_LENGTH:
+        raise ValueError(
+            f"{label} exceeds maximum length {MAX_POINTER_LENGTH}"
+        )
     if value and not value.startswith("/"):
         raise ValueError(f"{label} must be empty or start with '/'")
     index = 0
@@ -538,8 +744,23 @@ def _is_reserved_input_pointer(pointer: str) -> bool:
             "/expected_result",
             "/result_spec",
             "/semantic_assertions",
+            "/repair_policy",
         )
     )
+
+
+def _optional_text(
+    value: Any,
+    label: str,
+    maximum_length: int,
+) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a non-empty string when supplied")
+    if len(value) > maximum_length:
+        raise ValueError(
+            f"{label} exceeds maximum length {maximum_length}"
+        )
+    return value.strip()
 
 
 def _array(value: Any, operation: str) -> list[Any]:

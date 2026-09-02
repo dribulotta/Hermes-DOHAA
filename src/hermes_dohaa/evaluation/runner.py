@@ -32,7 +32,12 @@ from hermes_dohaa.assurance.result_spec import json_equal, json_type
 from hermes_dohaa.evaluation.models import EvaluationCase, EvaluationSuite
 from hermes_dohaa.evaluation.statistics import analyze_unique_cases
 from hermes_dohaa.evidence.ledger import EvidenceLedger
-from hermes_dohaa.runtime.base import AgentRuntime, Proposal, VerifierFeedback
+from hermes_dohaa.runtime.base import (
+    AgentRuntime,
+    Proposal,
+    RuleAwareRepairUnavailableError,
+    VerifierFeedback,
+)
 from hermes_dohaa.runtime.hermes_api import HermesApiError
 from hermes_dohaa.runtime.usage import summarize_usage
 
@@ -64,9 +69,34 @@ class _ObservedRuntime:
         started = time.perf_counter()
         self.calls += 1
         try:
-            proposal = self.delegate.propose(contract, feedback)
+            proposal = self.delegate.propose(
+                _snapshot_contract(contract),
+                _snapshot_feedback(feedback),
+            )
         finally:
             self.elapsed_seconds += time.perf_counter() - started
+        proposal = _snapshot_proposal(proposal)
+        self.proposals = (*self.proposals, proposal)
+        return proposal
+
+    def repair(self, contract, baseline, feedback, repair_scope):
+        method = getattr(self.delegate, "repair", None)
+        if not callable(method):
+            raise RuleAwareRepairUnavailableError(
+                "runtime does not implement scoped repair"
+            )
+        started = time.perf_counter()
+        self.calls += 1
+        try:
+            proposal = method(
+                _snapshot_contract(contract),
+                _snapshot_proposal(baseline),
+                _snapshot_feedback(feedback),
+                _json_clone(repair_scope),
+            )
+        finally:
+            self.elapsed_seconds += time.perf_counter() - started
+        proposal = _snapshot_proposal(proposal)
         self.proposals = (*self.proposals, proposal)
         return proposal
 
@@ -81,6 +111,10 @@ def run_comparative_evaluation(
     runtime_policy: Mapping[str, Any] | None = None,
     suite_commitment: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    # Detach the authoritative evaluation data before any untrusted factory or
+    # runtime sees it.  Every later runtime call receives another disposable
+    # clone; scoring continues against this untouched snapshot.
+    suite = EvaluationSuite.from_dict(suite.to_dict())
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("evaluation seed must be an integer")
     if (
@@ -222,7 +256,11 @@ def _run_condition(
 ) -> dict[str, Any]:
     try:
         runtime = _ObservedRuntime(
-            runtime_factory(case.contract, session_id, sampling_seed)
+            runtime_factory(
+                _snapshot_contract(case.contract),
+                session_id,
+                sampling_seed,
+            )
         )
     except Exception as exc:
         return _runtime_failure(case, condition, None, exc)
@@ -296,7 +334,10 @@ def _run_dohaa(
         result = DohaaController(runtime, gates, ledger).run(case.contract)
         chain_valid = ledger.verify_chain()
         records = tuple(ledger.records(result.run_id))
-    if result.reason_code is RunReasonCode.RUNTIME_FAILED:
+    if result.reason_code in {
+        RunReasonCode.RUNTIME_FAILED,
+        RunReasonCode.REPAIR_RUNTIME_UNAVAILABLE,
+    }:
         failure = next(
             (
                 record
@@ -306,13 +347,24 @@ def _run_dohaa(
             None,
         )
         failure_payload = failure.payload if failure is not None else {}
+        repair_unavailable = (
+            result.reason_code is RunReasonCode.REPAIR_RUNTIME_UNAVAILABLE
+        )
         outcome = _runtime_failure_details(
             case,
             EvaluationCondition.DOHAA,
             runtime,
-            error_type=str(failure_payload.get("error_type", "RuntimeError")),
+            error_type=(
+                "RuleAwareRepairUnavailableError"
+                if repair_unavailable
+                else str(failure_payload.get("error_type", "RuntimeError"))
+            ),
             error=str(failure_payload.get("error", result.reason)),
-            error_code=failure_payload.get("runtime_error_code"),
+            error_code=(
+                result.reason_code.value
+                if repair_unavailable
+                else failure_payload.get("runtime_error_code")
+            ),
             error_details=failure_payload.get("runtime_error_details", {}),
         )
         outcome["controller"] = {
@@ -359,8 +411,12 @@ def _completed_outcome(
         "elapsed_seconds": round(runtime.elapsed_seconds, 6),
         "usage": usage,
         "usage_summary": summarize_usage(usage, runtime.calls),
-        "initial_proposal": first.to_dict() if first is not None else None,
-        "final_proposal": final.to_dict() if final is not None else None,
+        "initial_proposal": (
+            _json_clone(first.to_dict()) if first is not None else None
+        ),
+        "final_proposal": (
+            _json_clone(final.to_dict()) if final is not None else None
+        ),
         "initial_score": initial_score,
         "final_score": final_score,
         "improved": (
@@ -420,7 +476,9 @@ def _runtime_failure_details(
         ),
         "usage": usage,
         "usage_summary": summarize_usage(usage, runtime_calls),
-        "initial_proposal": first.to_dict() if first is not None else None,
+        "initial_proposal": (
+            _json_clone(first.to_dict()) if first is not None else None
+        ),
         "final_proposal": None,
         "initial_score": _score(case, first) if first is not None else None,
         "final_score": None,
@@ -720,6 +778,25 @@ def _canonical_json(value: Any) -> str:
 
 def _json_clone(value: Any) -> Any:
     return json.loads(_canonical_json(value))
+
+
+def _snapshot_proposal(proposal: Proposal) -> Proposal:
+    if not isinstance(proposal, Proposal):
+        raise TypeError("runtime must return a Proposal")
+    return Proposal.from_dict(_json_clone(proposal.to_dict()))
+
+
+def _snapshot_contract(contract: TaskContract) -> TaskContract:
+    return TaskContract.from_dict(contract.to_dict())
+
+
+def _snapshot_feedback(feedback):
+    return tuple(
+        VerifierFeedback.from_dict(item.to_dict())
+        if isinstance(item, VerifierFeedback)
+        else item
+        for item in feedback
+    )
 
 
 def _utc_now() -> str:

@@ -10,6 +10,10 @@ from typing import Any, Mapping, Protocol, Sequence
 from hermes_dohaa.contracts.models import TaskContract
 
 
+class RuleAwareRepairUnavailableError(RuntimeError):
+    """Raised when an opt-in scoped retry reaches an incapable runtime."""
+
+
 @dataclass(frozen=True, slots=True)
 class EvidenceItem:
     evidence_id: str
