@@ -1,0 +1,320 @@
+{
+  "schema_version": "hpadmin-comparative-protocol/3.0",
+  "protocol_id": "hpadmin-local-small-hardware-comparative-v3",
+  "status": "preregistered",
+  "purpose": "Compare four complete local inference systems on a frozen synthetic administrative suite while measuring strict task correctness, runtime reliability, safety, and compute use.",
+  "prior_evidence": {
+    "v2_status": "INVALIDATED_DEVELOPMENT_EVIDENCE",
+    "v2_primary_claim_valid": false,
+    "reason": "The V2 DOHAA controller received oracle-derived result-equality feedback that was unavailable to the comparison conditions.",
+    "publication_boundary": "V2 may be retained as transparent development and audit evidence, but it must not be cited as evidence of DOHAA superiority.",
+    "v2_cases_reused_in_v3": false
+  },
+  "conditions": [
+    {
+      "id": "direct",
+      "maximum_attributed_logical_calls": 1,
+      "reasoning_request": "none",
+      "initial_proposal_source": "shared_reasoning_off_base",
+      "controller": "none",
+      "repair_signal": "none"
+    },
+    {
+      "id": "native_reasoning_requested",
+      "maximum_attributed_logical_calls": 1,
+      "reasoning_request": "high",
+      "initial_proposal_source": "independent_native_reasoning_request",
+      "controller": "none",
+      "repair_signal": "none",
+      "attestation_policy": {
+        "default_status": "requested_unattested",
+        "default_public_label": "native_reasoning_requested",
+        "attested_status": "attested",
+        "attested_public_label": "native_reasoning_attested",
+        "attestation_requirement": "Response telemetry or provider evidence must explicitly establish that the requested reasoning mode was applied to that response.",
+        "absence_of_attestation": "Do not claim that native reasoning occurred; report only that it was requested."
+      }
+    },
+    {
+      "id": "self_reflection",
+      "maximum_attributed_logical_calls": 2,
+      "reasoning_request": "none",
+      "initial_proposal_source": "shared_reasoning_off_base",
+      "controller": "generic_second_pass",
+      "repair_signal": "The shared initial proposal plus a generic independent-review instruction containing no oracle-derived information."
+    },
+    {
+      "id": "dohaa",
+      "maximum_attributed_logical_calls": 2,
+      "reasoning_request": "none",
+      "initial_proposal_source": "shared_reasoning_off_base",
+      "controller": "deterministic_production_gates_and_bounded_repair",
+      "repair_signal": "Failures from production-available deterministic gates only."
+    }
+  ],
+  "shared_initial_proposal": {
+    "enabled": true,
+    "shared_by_conditions": [
+      "direct",
+      "self_reflection",
+      "dohaa"
+    ],
+    "reasoning_request": "none",
+    "generation_rule": "For each case, execute one physical model call with reasoning disabled requested/configured to generate one proposal, then make immutable byte-identical copies for the three branches. The backend's effective internal reasoning state is not independently attested.",
+    "identity_evidence": "Record one canonical proposal SHA-256 and the same SHA-256 as the initial-proposal hash for Direct, Self-reflection, and DOHAA.",
+    "direct_final_output": "The shared initial proposal is Direct's final inference output.",
+    "branching_rule": "Self-reflection and DOHAA branch only after the shared proposal is immutable. Neither branch may mutate the proposal observed by another branch.",
+    "shared_failure_rule": "If the shared initial call still fails after its uniform transport retry, Direct, Self-reflection, and DOHAA receive the same unrecovered runtime failure and no branch-specific refinement is allowed.",
+    "fairness_rationale": "Sharing removes stochastic and temporal variation in the initial proposal generated under the requested reasoning-disabled configuration and shortens execution without changing the comparison of downstream control systems."
+  },
+  "call_accounting": {
+    "attributed_logical_call_definition": "A semantic inference step charged to a condition's declared computation budget. The shared initial proposal counts as one attributed logical call for each of Direct, Self-reflection, and DOHAA even though it is executed once.",
+    "physical_model_call_definition": "Each actual request sent to the model endpoint, including a transport retry. The shared initial request is one physical model call, not three; a retry adds one physical model call but no attributed logical call.",
+    "required_reporting": [
+      "attributed_logical_calls_by_condition",
+      "physical_model_calls_total",
+      "physical_model_calls_by_purpose",
+      "transport_retries_by_purpose",
+      "shared_initial_physical_calls",
+      "branch_refinement_physical_calls"
+    ],
+    "no_double_counting": "The shared physical request must not be reported as three physical model calls."
+  },
+  "comparison_scope": {
+    "comparison_type": "system_level",
+    "equal_model_artifact": true,
+    "model_artifact_evidence": "Same local model and artifact identity declared by the operator for all conditions; not independently attested.",
+    "equal_visible_case_input": true,
+    "visible_case_input_identity": "The canonical visible case-input bytes and their SHA-256 must be identical for Direct, native_reasoning_requested, Self-reflection, and DOHAA. Only the preregistered reasoning option or post-initial controller instruction may differ.",
+    "equal_sampling_parameters_for_reasoning_off_calls": true,
+    "equal_compute_budget_required": false,
+    "unequal_compute_interpretation": "Logical calls, physical calls, token use, and latency may differ by design. Results compare deployable systems, not equal-compute decoding strategies. Every difference must be disclosed."
+  },
+  "model_policy": {
+    "model_count": 1,
+    "same_model_artifact_for_all_conditions": true,
+    "default_model_alias": "qwen3.6-27b-mtp-p1",
+    "default_model_artifact_id": "sha256:5a3c61033581754d507ffdcbf0629214cbfbd58a2edbec80d93f6ec2af44d227",
+    "identity_attestation": "operator_declared_not_independently_attested",
+    "reasoning_configuration_attestation": "requested_configured_not_independently_attested_for_all_conditions",
+    "local_inference_only": true,
+    "model_substitution_after_freeze": false,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "sampling_seed": 20260903
+  },
+  "suite_policy": {
+    "suite_id": "hpadmin-comparative-protected-v3",
+    "case_count": 40,
+    "domain_counts": {
+      "budget_reconciliation": 8,
+      "exception_triage": 8,
+      "invoice_reconciliation": 8,
+      "payment_schedule": 8,
+      "procurement_selection": 8
+    },
+    "entirely_new_cases": true,
+    "reuse_v1_cases": false,
+    "reuse_v2_cases": false,
+    "reuse_hpadmin_demonstration_fixtures": false,
+    "reuse_hermes_dohaa_holdouts": false,
+    "synthetic_inert_data_only": true,
+    "visible_inputs_exclude_answers_and_oracles": true,
+    "semantic_assertions_in_visible_suite": false,
+    "semantic_assertions_location": "scorer_only_hidden_oracle",
+    "semantic_assertions_available_to_conditions": false,
+    "visible_case_input_byte_identical_across_all_conditions": true,
+    "visible_case_input_identity_evidence": "Record one canonical visible-input SHA-256 per case and the same SHA-256 for all four conditions.",
+    "freeze_before_first_protected_case_call": true,
+    "single_confirmatory_execution": true,
+    "rerun_under_same_protocol_id": false
+  },
+  "oracle_isolation": {
+    "oracle_available_during_inference": false,
+    "oracle_available_to_controllers": false,
+    "oracle_available_to_prompts": false,
+    "oracle_available_to_production_gates": false,
+    "semantic_assertions_available_during_inference_or_repair": false,
+    "oracle_scorer_runs_only_after_all_suite_inference_outputs_are_final_and_committed": true,
+    "oracle_feedback_to_any_condition": "ZERO",
+    "forbidden_controller_inputs": [
+      "expected_result",
+      "expected_status",
+      "expected_decision",
+      "semantic_assertions",
+      "oracle_assertions",
+      "oracle_score",
+      "oracle_failure",
+      "ResultEqualsGate"
+    ],
+    "forbidden_production_gate_types": [
+      "ResultEqualsGate",
+      "Any gate that reads expected_result or another hidden expected answer",
+      "Any gate whose output is derived from post-inference oracle scoring"
+    ],
+    "production_gate_requirement": "Every DOHAA controller gate must be computable from visible case input, candidate output, and fixed production policy available at deployment time.",
+    "production_gate_feedback": "A failed production gate may identify violated fields or policy rules but must not disclose contract-derived target values or hidden expected answers to the model.",
+    "enforcement": [
+      "Fail closed before the protected run if controller construction references expected_result or ResultEqualsGate.",
+      "Fail closed before the protected run if any visible suite record or condition payload contains semantic_assertions.",
+      "Keep oracle material unavailable to the inference and controller process.",
+      "Verify one visible-input SHA-256 per case is identical across all four conditions.",
+      "Serialize controller-gate names and inputs for audit without serializing hidden oracle answers into controller state.",
+      "Commit immutable outputs for every case and condition before the scoring process loads the oracle.",
+      "Never route oracle scores, failures, labels, or comparisons back into a model call or deterministic repair."
+    ]
+  },
+  "execution_policy": {
+    "confirmatory_runs": 1,
+    "condition_order_seed": 20260903,
+    "sampling_seed": 20260903,
+    "execution_code_commitment": {
+      "required": true,
+      "algorithm": "sha256",
+      "covered_roles": [
+        "suite_generator",
+        "inference_runner",
+        "dohaa_production_gates",
+        "post_inference_scorer"
+      ],
+      "record_before_first_protected_request": true,
+      "commitment_location": "protected execution commitment",
+      "mutation_after_commitment": "ABORT_BEFORE_INFERENCE"
+    },
+    "fresh_session_per_case_and_inference_branch": true,
+    "timeout_seconds_per_request": 900,
+    "transport_retry": {
+      "maximum_retries_per_logical_call": 1,
+      "retry_delay_seconds": 5,
+      "retryable_codes": [
+        "response.connection_failed",
+        "response.timeout"
+      ],
+      "same_policy_for_all_model_calls": true,
+      "retry_may_change_semantic_prompt_or_controller_state": false,
+      "shared_initial_retry_applies_identically_to_all_three_shared_branches": true,
+      "recovered_failures_reported_separately": true,
+      "unrecovered_failures_count_as_strict_failures": true
+    },
+    "counterbalanced_initial_call_order": {
+      "seed": 20260903,
+      "units": [
+        "shared_reasoning_off_base",
+        "native_reasoning_requested"
+      ],
+      "orders": [
+        [
+          "shared_reasoning_off_base",
+          "native_reasoning_requested"
+        ],
+        [
+          "native_reasoning_requested",
+          "shared_reasoning_off_base"
+        ]
+      ],
+      "assignment": "Within each domain, assign each order to exactly four cases using seed 20260903 and freeze the assignment before execution.",
+      "balance": "Each initial-call unit appears first in exactly 20 of 40 cases and in exactly four of eight cases per domain."
+    },
+    "counterbalanced_branch_refinement_order": {
+      "seed": 20260903,
+      "units": [
+        "self_reflection",
+        "dohaa"
+      ],
+      "orders": [
+        [
+          "self_reflection",
+          "dohaa"
+        ],
+        [
+          "dohaa",
+          "self_reflection"
+        ]
+      ],
+      "assignment": "Within each domain, assign each order to exactly four cases using seed 20260903 and freeze the assignment before execution. The assignment must not depend on oracle data, outputs, failures, or prior scoring.",
+      "balance": "Each refinement branch runs first in exactly 20 of 40 cases and in exactly four of eight cases per domain."
+    }
+  },
+  "scoring": {
+    "unit_of_analysis": "unique_case",
+    "strict_pass_definition": "A condition strictly passes a case if and only if its final outcome is completed, has no unrecovered runtime failure, satisfies the public output schema and safety contract, and passes every frozen post-inference oracle assertion. Otherwise it strictly fails.",
+    "score_timing": "The separate scorer runs only after all 160 condition outputs are final, immutable, and committed, and no further call or repair is permitted.",
+    "paired_outcome_definitions": {
+      "win": "DOHAA strictly passes and Direct strictly fails on the same case.",
+      "loss": "DOHAA strictly fails and Direct strictly passes on the same case.",
+      "tie": "Both strictly pass or both strictly fail on the same case."
+    },
+    "ties_in_sign_test": "Exclude ties from the sign-test sample size but report both-pass and both-fail ties separately.",
+    "exact_two_sided_sign_test": {
+      "null_hypothesis": "Conditional on a non-tied pair, DOHAA and Direct are equally likely to win: p=0.5.",
+      "symbols": "Let W be DOHAA wins, L be DOHAA losses, and n=W+L.",
+      "formula": "If n=0, p_exact=1. Otherwise p_exact=min(1, 2 * sum_{k=0}^{min(W,L)} C(n,k) * 0.5^n).",
+      "alpha": 0.05,
+      "interpretation_boundary": "This p-value is a preregistered fixed-suite decision statistic. The 40 cases are frozen instances of five schemas, not a random sample from a population; independence, population inference, and generalization beyond these cases are not established."
+    }
+  },
+  "analysis_plan": {
+    "primary_comparison": "dohaa_vs_direct",
+    "secondary_comparisons": [
+      "dohaa_vs_native_reasoning_requested",
+      "dohaa_vs_self_reflection",
+      "native_reasoning_requested_vs_direct",
+      "self_reflection_vs_direct"
+    ],
+    "primary_metric": "final_strict_pass_after_uniform_transport_retry",
+    "supporting_metrics": [
+      "strict_pass_rate",
+      "unrecovered_runtime_failures",
+      "recovered_transport_failures",
+      "attributed_logical_model_calls",
+      "physical_model_calls",
+      "input_tokens",
+      "output_tokens",
+      "latency_seconds"
+    ],
+    "domain_results": "exploratory",
+    "latency": "descriptive_only",
+    "token_usage": "descriptive_only",
+    "hardware": "Report the observed local configuration and measured resource use; do not imply cloud-equivalent cost or throughput."
+  },
+  "success_criteria": {
+    "combination": "ALL_REQUIRED_AND",
+    "required": [
+      "DOHAA strict-pass rate is greater than Direct strict-pass rate.",
+      "DOHAA wins are greater than DOHAA losses versus Direct.",
+      "The preregistered exact two-sided sign-test p-value is less than or equal to 0.05.",
+      "DOHAA losses versus Direct equal zero.",
+      "DOHAA unrecovered runtime failures equal zero.",
+      "Oracle-isolation enforcement passes with zero violations.",
+      "Visible case-input hashes are identical across all four conditions in every case.",
+      "The initial proposal hashes for Direct, Self-reflection, and DOHAA are identical in every case."
+    ],
+    "pass_expression": "rate_dohaa > rate_direct AND W > L AND p_exact <= 0.05 AND L == 0 AND dohaa_unrecovered_runtime_failures == 0 AND oracle_isolation_violations == 0 AND visible_input_identity_violations == 0 AND shared_initial_identity_violations == 0",
+    "failure_rule": "If any required clause is false or unavailable, ASSESSMENT=NOT_PASSED."
+  },
+  "safety_boundary": {
+    "real_documents": false,
+    "bank_access": false,
+    "email_sending": false,
+    "original_modification": false,
+    "payment_execution": false,
+    "shell_execution": false,
+    "requested_actions_must_be_empty": true,
+    "human_authority_retained": true
+  },
+  "claim_boundary": {
+    "supported_if_successful": "On this frozen 40-case synthetic administrative suite and the same local model/artifact declared by the operator but not independently attested, the complete DOHAA-controlled branch (LLM plus deterministic deployable policy validator and bounded repair) achieved higher strict correctness than the Direct branch starting from byte-identical initial proposals, under the preregistered paired analysis.",
+    "native_reasoning_interpretation": "This condition establishes the effect of requesting the model's high-reasoning option. It may be described as native reasoning only when response telemetry attests that the option was applied.",
+    "unequal_compute_disclosure": "The comparison is between deployable systems with different allowed computation. It does not establish equal-compute algorithmic superiority.",
+    "statistical_interpretation": "The exact sign-test p-value is used only as a preregistered decision rule on this fixed suite and must not be described as population-level significance or evidence of generalization.",
+    "not_supported": [
+      "Universal superiority across models, tasks, or domains",
+      "Causal attribution of all improvement to a single DOHAA component",
+      "Superiority over a standalone deterministic policy engine",
+      "Generalization beyond new instances of the five frozen administrative schemas",
+      "Autonomous payment safety in production",
+      "Production throughput or latency guarantees",
+      "Replacement of human administrative authority"
+    ]
+  }
+}
