@@ -245,6 +245,7 @@ class RequiredEvidenceGate:
 class ResultEqualsGate:
     """Require the proposal result to equal a controller-owned expected value."""
 
+    repair_feedback_mode = "oracle_only"
     expected: Any
     name: str = "result_equals"
 
@@ -298,6 +299,7 @@ class SemanticAssertionsGate:
     """Evaluate bounded relations declared in contract-visible inputs."""
 
     name: str = "semantic_assertions"
+    repair_feedback_mode: str = "contract_visible_scope"
 
     def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
         raw = contract.inputs.get("semantic_assertions")
@@ -315,6 +317,7 @@ class SemanticAssertionsGate:
             contract.inputs,
             proposal.result,
             assertions,
+            include_repair_scope="repair_policy" in contract.inputs,
         )
         if details:
             failed_ids = [

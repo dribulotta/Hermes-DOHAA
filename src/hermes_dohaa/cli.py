@@ -29,6 +29,7 @@ from hermes_dohaa.controller.engine import (
     RunResumeError,
     RunResumeErrorCode,
 )
+from hermes_dohaa.controller.repair_policy import RuleAwareRepairPolicy
 from hermes_dohaa.evidence.ledger import EvidenceLedger, LedgerIntegrityError
 from hermes_dohaa.evaluation import (
     EvaluationProtocol,
@@ -325,6 +326,11 @@ def _validate_contract_gate_inputs(contract: TaskContract) -> None:
             raise ValueError(
                 f"invalid semantic_assertions: {exc}"
             ) from exc
+    if "repair_policy" in contract.inputs:
+        try:
+            RuleAwareRepairPolicy.from_contract(contract)
+        except ValueError as exc:
+            raise ValueError(f"invalid repair_policy: {exc}") from exc
 
 
 def _run_evaluate(args: argparse.Namespace) -> int:

@@ -1,4 +1,6 @@
+import copy
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -12,6 +14,7 @@ from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SUITE_SCHEMA_PATH = REPO_ROOT / "schemas/evaluation-suite.schema.json"
 
 
 def contract(spec):
@@ -143,9 +146,176 @@ class RecursiveResultTests(unittest.TestCase):
 
     def test_schema_json(self):
         schema=json.loads(
-            (REPO_ROOT / "schemas/evaluation-suite.schema.json").read_text()
+            SUITE_SCHEMA_PATH.read_text()
         )
         self.assertIn("recursiveResultSpec",schema["$defs"])
+        assertion_schema = schema["$defs"]["semanticAssertion"]
+        self.assertNotIn("description", assertion_schema["required"])
+        self.assertNotIn("repair_group", assertion_schema["required"])
+        self.assertEqual(
+            {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "pattern": r"\S",
+            },
+            assertion_schema["properties"]["description"],
+        )
+        self.assertEqual(
+            {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": r"\S",
+            },
+            assertion_schema["properties"]["repair_group"],
+        )
+
+        repair_schema = schema["$defs"]["repairPolicy"]
+        self.assertFalse(repair_schema["additionalProperties"])
+        self.assertEqual(
+            {"schema_version", "mode"},
+            set(repair_schema["required"]),
+        )
+        self.assertEqual(
+            "1.0",
+            repair_schema["properties"]["schema_version"]["const"],
+        )
+        self.assertEqual(
+            "rule_aware",
+            repair_schema["properties"]["mode"]["const"],
+        )
+        self.assertIs(
+            repair_schema["properties"]["preserve_unlisted"]["const"],
+            True,
+        )
+        self.assertIs(
+            repair_schema["properties"]["require_strict_improvement"]["const"],
+            True,
+        )
+        contract_overlay = schema["properties"]["cases"]["items"][
+            "properties"
+        ]["contract"]["allOf"][1]
+        self.assertEqual(
+            "#/$defs/repairPolicy",
+            contract_overlay["properties"]["inputs"]["properties"][
+                "repair_policy"
+            ]["$ref"],
+        )
+
+    def test_rule_aware_schema_declares_valid_and_invalid_boundaries(self):
+        schema = json.loads(SUITE_SCHEMA_PATH.read_text())
+        assertion_properties = schema["$defs"]["semanticAssertion"]["properties"]
+        for field, valid, invalid in (
+            ("description", "Copy the visible amount.", ("", " \n\t", "x" * 1025)),
+            ("repair_group", "budget.totals", ("", " \n\t", "g" * 129)),
+        ):
+            field_schema = assertion_properties[field]
+            self.assertLessEqual(len(valid), field_schema["maxLength"])
+            self.assertIsNotNone(re.search(field_schema["pattern"], valid))
+            for value in invalid:
+                with self.subTest(field=field, value=value[:20]):
+                    self.assertTrue(
+                        len(value) < field_schema["minLength"]
+                        or len(value) > field_schema["maxLength"]
+                        or re.search(field_schema["pattern"], value) is None
+                    )
+
+        pointer_schema = schema["$defs"]["proposalPointer"]
+        valid_pointers = (
+            "/result",
+            "/result/requires_human_approval",
+            "/claims/0",
+            "/evidence/0/source~1name~0version",
+            "/requested_actions/0",
+        )
+        invalid_pointers = (
+            "",
+            "result/answer",
+            "/contract/objective",
+            "/result/bad~2escape",
+        )
+        for pointer in valid_pointers:
+            self.assertIsNotNone(re.fullmatch(pointer_schema["pattern"], pointer))
+        for pointer in invalid_pointers:
+            self.assertIsNone(re.fullmatch(pointer_schema["pattern"], pointer))
+
+        immutable_schema = schema["$defs"]["repairPolicy"]["properties"][
+            "immutable_paths"
+        ]
+        self.assertEqual(256, immutable_schema["maxItems"])
+        self.assertTrue(immutable_schema["uniqueItems"])
+        self.assertEqual(
+            "#/$defs/proposalPointer",
+            immutable_schema["items"]["$ref"],
+        )
+
+    def test_public_rule_aware_schema_examples_match_suite_parser(self):
+        raw = json.loads(
+            (REPO_ROOT / "examples/evaluation-suite.json").read_text()
+        )
+        inputs = raw["cases"][0]["contract"]["inputs"]
+        inputs["repair_policy"] = {
+            "schema_version": "1.0",
+            "mode": "rule_aware",
+            "preserve_unlisted": True,
+            "require_strict_improvement": True,
+            "immutable_paths": ["/result/status"],
+        }
+        inputs["semantic_assertions"] = [
+            {
+                "assertion_id": "budget.available",
+                "description": "Compute the available budget from visible inputs.",
+                "repair_group": "budget.totals",
+                "operator": "equals",
+                "left": {
+                    "op": "ref",
+                    "source": "result",
+                    "pointer": "/available_budget",
+                },
+                "right": {
+                    "op": "ref",
+                    "source": "inputs",
+                    "pointer": "/sources/0/content/total_budget",
+                },
+            }
+        ]
+        self.assertEqual(
+            "budget.available",
+            EvaluationSuite.from_dict(raw).cases[0].contract.inputs[
+                "semantic_assertions"
+            ][0]["assertion_id"],
+        )
+
+        invalid = []
+        unknown_policy = copy.deepcopy(raw)
+        unknown_policy["cases"][0]["contract"]["inputs"]["repair_policy"][
+            "unknown"
+        ] = True
+        invalid.append(unknown_policy)
+
+        unsafe_policy = copy.deepcopy(raw)
+        unsafe_policy["cases"][0]["contract"]["inputs"]["repair_policy"][
+            "preserve_unlisted"
+        ] = False
+        invalid.append(unsafe_policy)
+
+        invalid_pointer = copy.deepcopy(raw)
+        invalid_pointer["cases"][0]["contract"]["inputs"]["repair_policy"][
+            "immutable_paths"
+        ] = ["/contract/objective"]
+        invalid.append(invalid_pointer)
+
+        empty_description = copy.deepcopy(raw)
+        empty_description["cases"][0]["contract"]["inputs"][
+            "semantic_assertions"
+        ][0]["description"] = " \t"
+        invalid.append(empty_description)
+
+        for candidate in invalid:
+            with self.subTest(candidate=candidate):
+                with self.assertRaises(EvaluationSuiteError):
+                    EvaluationSuite.from_dict(candidate)
 
     def test_domain_statistics_keep_runtime_failures(self):
         def outcome(passed, runtime=False):

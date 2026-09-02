@@ -59,6 +59,27 @@ The controller records `failure_code` with each gate verdict and sends only
 failed verdicts to the next proposal attempt. The retry event records the same
 structured objects in the evidence ledger.
 
+When the visible contract opts into `repair_policy.mode=rule_aware`, the
+controller replaces ordinary failure prose with one bounded, value-free repair
+directive. It includes rule IDs, one dependency-closed editable unit, atomic
+groups, and visible contract source pointers. Independent failed units are
+handled on later attempts. The prior proposal is supplied as an isolated deep
+copy so the runtime can preserve unlisted fields; the controller verifies that
+preservation against its own snapshot.
+
+Rule-aware contracts require the runtime's optional scoped `repair` capability.
+If it is absent, the controller fails closed instead of treating a fresh
+`propose` call as a repair. Comparative evaluation classifies that outcome as
+`runtime_failed`, so infrastructure/configuration failures cannot be counted as
+ordinary completed losses.
+
+The controller retains a candidate only when it resolves every failed rule in
+the selected unit and introduces no new non-oracle failure. Oracle-only verdicts
+are re-evaluated for terminal success but never influence intermediate
+retention. Out-of-scope edits, immutable-field edits, incomplete repairs, and
+regressions are recorded with fingerprints and pointers, then rolled back.
+Repair events do not record proposal values.
+
 Terminal controller outcomes also expose a stable `reason_code`:
 
 | Code | Meaning |
@@ -66,6 +87,8 @@ Terminal controller outcomes also expose a stable `reason_code`:
 | `run.succeeded` | All deterministic gates and approval requirements passed |
 | `runtime.failed` | The cognitive runtime failed before producing a proposal |
 | `repair.no_progress` | A previous proposal fingerprint was repeated |
+| `repair.unsignaled_failure` | A failing gate supplied no complete authorized repair scope |
+| `repair.runtime_unavailable` | The selected runtime does not implement scoped repair |
 | `budget.exhausted` | The bounded attempt budget was consumed |
 | `approval.required` | Deterministic gates passed but human approval is pending |
 | `control_plane.identity_failed` | The controller could not identify its code or gate configuration |

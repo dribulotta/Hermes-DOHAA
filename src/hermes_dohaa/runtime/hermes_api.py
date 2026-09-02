@@ -9,7 +9,7 @@ import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
@@ -102,26 +102,62 @@ class HermesApiRuntime:
         contract: TaskContract,
         feedback: Sequence[VerifierFeedback | str],
     ) -> Proposal:
+        return self._request_proposal(contract, feedback)
+
+    def repair(
+        self,
+        contract: TaskContract,
+        baseline: Proposal,
+        feedback: Sequence[VerifierFeedback | str],
+        repair_scope: Mapping[str, Any],
+    ) -> Proposal:
+        """Request a complete proposal constrained by a controller-owned scope."""
+        return self._request_proposal(
+            contract,
+            feedback,
+            previous_proposal=baseline,
+            repair_scope=repair_scope,
+        )
+
+    def _request_proposal(
+        self,
+        contract: TaskContract,
+        feedback: Sequence[VerifierFeedback | str],
+        *,
+        previous_proposal: Proposal | None = None,
+        repair_scope: Mapping[str, Any] | None = None,
+    ) -> Proposal:
+        user_payload: dict[str, Any] = {
+            "task_contract": contract.to_dict(),
+            "verifier_feedback": [
+                item.to_dict()
+                if isinstance(item, VerifierFeedback)
+                else item
+                for item in feedback
+            ],
+        }
+        if previous_proposal is not None:
+            if repair_scope is None:
+                raise ValueError("repair requests require repair_scope")
+            user_payload["previous_proposal"] = previous_proposal.to_dict()
+            user_payload["repair_scope"] = _json_clone(dict(repair_scope))
+        elif repair_scope is not None:
+            raise ValueError("repair_scope requires a previous proposal")
         body = {
             "model": self.model,
             "stream": False,
             "messages": [
                 {
                     "role": "system",
-                    "content": _SYSTEM_PROMPT,
+                    "content": (
+                        _SYSTEM_PROMPT
+                        + (_REPAIR_PROMPT if previous_proposal is not None else "")
+                    ),
                 },
                 {
                     "role": "user",
                     "content": json.dumps(
-                        {
-                            "task_contract": contract.to_dict(),
-                            "verifier_feedback": [
-                                item.to_dict()
-                                if isinstance(item, VerifierFeedback)
-                                else item
-                                for item in feedback
-                            ],
-                        },
+                        user_payload,
                         ensure_ascii=False,
                         sort_keys=True,
                     ),
@@ -353,4 +389,10 @@ Required shape:
   ],
   "requested_actions": ["action.name"]
 }
+"""
+
+_REPAIR_PROMPT = """
+When a repair_scope and previous_proposal are supplied, change only paths listed in
+repair_scope.editable_paths. Preserve every unlisted proposal field exactly. Rule IDs
+and source pointers identify visible contract rules; they never reveal oracle values.
 """

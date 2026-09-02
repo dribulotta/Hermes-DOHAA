@@ -22,6 +22,7 @@ _CONTROL_PLANE_MODULES = (
     "hermes_dohaa.assurance.semantic_assertions",
     "hermes_dohaa.evidence.ledger",
     "hermes_dohaa.controller.identity",
+    "hermes_dohaa.controller.repair_policy",
     "hermes_dohaa.controller.semantic_repair",
     "hermes_dohaa.controller.engine",
 )

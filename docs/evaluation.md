@@ -21,9 +21,11 @@ order is shuffled per case using the recorded seed.
 
 Every evaluation case stores `expected_result` next to, but outside, its task
 contract. The runtime factory receives only the contract and an opaque session
-identifier. The direct and reflection conditions never receive the
-oracle. DOHAA receives only a stable `result.mismatch` verdict when the result
-is wrong, not the expected value itself.
+identifier. The direct and reflection conditions never receive the oracle. In
+legacy retry mode, DOHAA receives only a stable `result.mismatch` verdict when
+the result is wrong, not the expected value itself. Rule-aware retry treats
+that verdict as oracle-only: it is never included in repair feedback or
+intermediate candidate selection.
 
 Exact output vocabularies are not secret oracles. Cases declare a
 contract-visible `inputs.result_spec` with required keys, JSON types, and enum
@@ -83,10 +85,11 @@ visible total minus visible spent and committed amounts:
 
 References use RFC 6901 JSON Pointers and may read only `inputs` or `result`.
 Input references cannot read the whole input object or the reserved
-`result_spec`, `semantic_assertions`, and `expected_result` paths. The language
-has no literal expression, arbitrary code, JSONPath, filesystem, network, or
-runtime-call operator. Consequently, every compared value comes from data
-already visible to the cognitive runtime or from its proposal.
+`result_spec`, `semantic_assertions`, `repair_policy`, and `expected_result`
+paths. The language has no literal expression, arbitrary code, JSONPath,
+filesystem, network, or runtime-call operator. Consequently, every compared
+value comes from data already visible to the cognitive runtime or from its
+proposal.
 Every assertion must contain at least one `result` reference so a tautology
 between inputs cannot masquerade as proposal validation.
 
@@ -140,6 +143,95 @@ reasoning. It can save a bounded retry when the contract already declares how
 to compute the correct field. A protected suite used to design or inspect this
 behavior becomes development evidence and must not be reused as fresh
 confirmation after the implementation changes.
+
+### Opt-in rule-aware retry guard
+
+A contract can enable conservative generative repair with this visible,
+strictly parsed input:
+
+    {
+      "repair_policy": {
+        "schema_version": "1.0",
+        "mode": "rule_aware",
+        "preserve_unlisted": true,
+        "require_strict_improvement": true,
+        "immutable_paths": ["/result/requires_human_approval"]
+      }
+    }
+
+When enabled, a repairable failed semantic assertion exposes a value-free
+`repair_scope`. A rule is repairable only when exactly one side is a direct
+`result` reference and the other side does not read that target. That direct
+reference is the sole inferred write target; any other result references are
+read-only dependencies. Every target must already be present in the proposal.
+Grouped target paths are deduplicated and must be non-overlapping. Ambiguous
+rules fail closed without a scope.
+
+The scope contains stable assertion IDs, proposal-result targets, and pointers
+to ordinary visible contract inputs. It never contains resolved operands,
+expected values, actual values, oracle differences, or hidden scorer data.
+Failed rule IDs must also be unique across repair-capable gates; ambiguous
+cross-gate identities fail closed.
+Assertions may also declare a visible `description` and `repair_group`:
+
+    {
+      "assertion_id": "budget.total_obligated",
+      "description": "Include spent, committed, and reserve amounts.",
+      "repair_group": "budget.totals",
+      "operator": "equals",
+      "left": {
+        "op": "ref",
+        "source": "result",
+        "pointer": "/total_obligated_minor"
+      },
+      "right": {
+        "op": "add",
+        "args": [
+          {"op": "ref", "source": "inputs", "pointer": "/budget/spent_minor"},
+          {"op": "ref", "source": "inputs", "pointer": "/budget/committed_minor"},
+          {"op": "ref", "source": "inputs", "pointer": "/budget/reserve_minor"}
+        ]
+      }
+    }
+
+All assertions sharing `repair_group` authorize one atomic candidate scope.
+That explicit authority includes targets of group members that already pass;
+use separate groups or `immutable_paths` when such fields must remain byte-for-
+byte stable under a permissive rule such as an inequality.
+Each attempt selects one failed rule and closes only its explicit group and
+result-path dependencies; independent failed units wait for later attempts.
+This prevents a resolved rule from masking degradation inside another failing
+unit. The runtime's optional `repair(contract, baseline, feedback, scope)`
+capability receives a deep copy of the prior complete proposal plus the
+value-free scope and must preserve every unlisted field. A runtime without that
+capability fails closed with `repair.runtime_unavailable`; rule-aware mode never
+falls back to an unscoped fresh proposal. The controller keeps
+its own snapshot and independently performs a type-exact recursive diff. Any
+write outside the scope or across an immutable path rejects the whole
+candidate.
+
+After every allowed candidate, all configured gates run again. The controller
+adopts it only when every failed rule in the selected repair unit is resolved
+and no new non-oracle failure is introduced. Equal, incomplete, or worse
+candidates are rolled back, and attempt exhaustion returns the best verified
+candidate. Initial deterministic semantic normalization is filtered through
+the same selected write scope and immutable-path check.
+
+`ResultEqualsGate` is explicitly oracle-only. Its expected value, reason,
+details, and pass/fail transition never enter a rule-aware repair request or
+influence intermediate candidate retention. Oracle-only gates still participate
+in the terminal all-gates decision. If the remaining failures have no complete
+authorized scope, the controller stops with
+`repair.unsignaled_failure` instead of asking the model to guess. The
+`inputs.repair_policy` key is now reserved for this control-plane feature;
+legacy contracts that used that name for domain data must rename it. Contracts
+without that key keep the legacy retry behavior and feedback shape.
+
+This mode is a development mechanism, not confirmation of the invalidated V3
+claim. New public synthetic tests cover arithmetic, business-day calendars,
+atomic groups, immutable-field preservation, partial improvement, and rollback.
+A future protected evaluation must use newly frozen cases and must compare a
+standalone deterministic policy baseline separately from model-assisted repair.
 
 ## Run an evaluation
 
