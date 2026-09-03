@@ -1,0 +1,605 @@
+{
+  "analysis_plan": {
+    "case_class_analysis": "Report all four conditions within each frozen case class; treat class effects and interactions as exploratory.",
+    "domain_analysis": "Report all four conditions within each of the six domains; treat domain effects and interactions as exploratory.",
+    "latency_tokens_and_hardware": "Descriptive only; no cloud-cost, affordability, or throughput claim is permitted without separate attested evidence.",
+    "primary_comparison": "rule_aware_dohaa_vs_deterministic_policy_only",
+    "primary_metric": "final_strict_pass",
+    "primary_test": "preregistered exact two-sided paired sign test",
+    "secondary_comparisons": [
+      {
+        "id": "rule_aware_dohaa_vs_generic_self_repair",
+        "purpose": "Assess whether value-free verifier scope plus guarded candidate selection improves on a generic repair call under the same maximum logical model-call budget."
+      },
+      {
+        "id": "rule_aware_dohaa_vs_frozen_initial",
+        "purpose": "Measure the complete rule-aware system's net change from no repair."
+      },
+      {
+        "id": "deterministic_policy_only_vs_frozen_initial",
+        "purpose": "Measure the bounded deterministic repair contribution."
+      },
+      {
+        "id": "generic_self_repair_vs_frozen_initial",
+        "purpose": "Measure the generic repair contribution and regressions."
+      }
+    ],
+    "secondary_inference": "Report W, L, both tie types, pass-rate difference, exact two-sided p, and Holm-adjusted p across the four secondary comparisons. Secondary results are not part of V4 PASS and cannot rescue a failed primary comparison.",
+    "supporting_metrics": [
+      "strict pass counts and rates",
+      "repaired, unchanged, partially improved, regressed, and runtime-failed transitions",
+      "rule-aware scope derivation, candidate adoption, rejection, rollback, and terminal reason codes",
+      "deterministic candidate attempt and adoption reason codes",
+      "out-of-scope and immutable-path attempted versus accepted changes",
+      "unrecovered and recovered transport failures",
+      "attributed logical calls and physical request attempts",
+      "tokens and latency",
+      "hardware and resource observations"
+    ]
+  },
+  "call_accounting": {
+    "attributed_logical_call_definition": "A semantic request to the cognitive model charged to one condition. Returning or copying the protected frozen initial proposal is not a model call.",
+    "expected_logical_calls": {
+      "deterministic_policy_only": 0,
+      "frozen_initial": 0,
+      "generic_self_repair": 96,
+      "rule_aware_dohaa": "between 0 and 96, conditional only on production-visible scope derivation"
+    },
+    "missing_usage": "Report UNKNOWN for unavailable token fields; never impute zero.",
+    "physical_model_call_definition": "Every actual endpoint request, including a transport retry.",
+    "required_reporting": [
+      "attributed logical calls by case and condition",
+      "physical request attempts by case, condition, and purpose",
+      "transport retries and recovery status",
+      "input, output, reasoning, cached, and total tokens when supplied by the endpoint",
+      "latency by logical call and complete condition",
+      "zero-call deterministic transformations separately from model calls"
+    ]
+  },
+  "claim_boundary": {
+    "baseline_interpretation": "The deterministic comparator is the frozen bounded equality-repair baseline defined in this protocol. Passing does not establish superiority over an exhaustive, bespoke, or independently authored domain solver.",
+    "compute_interpretation": "The primary comparison has unequal model compute: rule-aware may use one model repair call and deterministic_policy_only uses none. It compares complete deployable repair systems, not equal-compute algorithms.",
+    "not_supported": [
+      "Universal superiority across models, prompts, tasks, domains, seeds, or hardware.",
+      "Superiority over every standalone deterministic policy engine or a complete domain-specific solver.",
+      "Equal-compute model or decoding superiority.",
+      "Causal attribution of the entire effect to abstract reasoning rather than the complete scoped-repair system.",
+      "Population generalization beyond the fixed six-domain V4 design.",
+      "Production throughput, affordability, or latency guarantees.",
+      "Safe autonomous administrative action, payment execution, or replacement of human authority."
+    ],
+    "repair_interpretation": "Because every arm starts from a protected frozen proposal, the result concerns repair efficacy and guard behavior, not initial-generation quality or the natural incidence of repairable errors.",
+    "statistical_interpretation": "The exact p-value is a preregistered decision statistic for this fixed, balanced suite. It is not population-level significance unless the case-generation distribution and independent sampling assumptions are separately justified.",
+    "supported_only_if_passed": "On these 96 newly frozen synthetic HPADMIN repair cases, using the pinned upstream implementation and the internally consistent operator-declared model identity, the complete rule-aware DOHAA condition achieved statistically significant paired superiority and at least six net additional strict passes over the specified bounded deterministic-policy-only repair baseline from byte-identical frozen starting proposals, while satisfying the preregistered runtime, safety, isolation, integrity, and non-reuse gates. This claim does not assert independent model-artifact digest attestation."
+  },
+  "conditions": [
+    {
+      "controller": "none",
+      "final_output": "byte-identical frozen initial proposal",
+      "id": "frozen_initial",
+      "initial_proposal_source": "protected_suite_frozen_initial_proposal",
+      "maximum_attributed_logical_model_calls": 0,
+      "maximum_physical_model_calls_before_transport_retry": 0,
+      "repair_signal": "none",
+      "role": "no-repair reference"
+    },
+    {
+      "algorithm": "Apply the frozen V4 deterministic semantic repair pass to every eligible input-derived equality target once, preserve all unlisted and immutable paths, reevaluate the complete production-visible gate set, and adopt the candidate only on strict non-oracle improvement with no newly introduced failure; otherwise return the frozen initial proposal.",
+      "controller": "independent_deterministic_branch",
+      "id": "deterministic_policy_only",
+      "independence_requirements": [
+        "No model or cognitive-runtime call.",
+        "No output, trace, score, or state from another condition.",
+        "No hidden expected_result, oracle assertion, oracle score, or scorer import.",
+        "Execution occurs as its own branch over an immutable copy of the initial proposal and contract."
+      ],
+      "initial_proposal_source": "protected_suite_frozen_initial_proposal",
+      "maximum_attributed_logical_model_calls": 0,
+      "maximum_physical_model_calls_before_transport_retry": 0,
+      "repair_signal": "Contract-visible result_spec, semantic_assertions, repair_policy, frozen proposal, and production-visible gate results only.",
+      "role": "primary bounded deterministic repair baseline",
+      "scope_boundary": "This is a bounded deterministic equality-repair baseline, not an exhaustive domain solver and not a claim about every possible deterministic policy engine."
+    },
+    {
+      "call_rule": "Make exactly one logical model call per case unless the uniformly retried request ends in an unrecovered transport failure.",
+      "candidate_policy": "The returned complete proposal is final for this arm and is scored only after every condition output is committed.",
+      "controller": "generic_single_pass_review",
+      "id": "generic_self_repair",
+      "initial_proposal_source": "protected_suite_frozen_initial_proposal",
+      "maximum_attributed_logical_model_calls": 1,
+      "maximum_physical_model_calls_before_transport_retry": 1,
+      "repair_signal": "The complete frozen proposal plus a generic independent-review instruction; no failed rule IDs, gate verdicts, repair scope, resolved operands, expected values, or oracle-derived information.",
+      "role": "equal-maximum-model-call generic repair comparator"
+    },
+    {
+      "controller": "DohaaController at the pinned upstream commit",
+      "execution_rule": [
+        "A SharedFirst runtime returns the frozen initial proposal without a model call.",
+        "The same bounded deterministic semantic prepass available to the deterministic baseline may finish the case without a model call.",
+        "If a valid contract-visible repair scope remains, make at most one scoped runtime.repair call.",
+        "If no valid scope exists, fail closed with repair.unsignaled_failure and make no unscoped fallback call.",
+        "Reject and roll back candidates with out-of-scope or immutable-path changes, unresolved selected targets, newly introduced non-oracle failures, or no strict non-oracle improvement.",
+        "Return the best controller-verified proposal at exhaustion without using hidden-oracle state."
+      ],
+      "id": "rule_aware_dohaa",
+      "initial_proposal_source": "protected_suite_frozen_initial_proposal",
+      "max_attempts": 2,
+      "maximum_attributed_logical_model_calls": 1,
+      "maximum_physical_model_calls_before_transport_retry": 1,
+      "repair_signal": "Exactly one value-free repair scope derived from frozen production-visible rules and the current proposal.",
+      "role": "confirmatory treatment"
+    }
+  ],
+  "confirmatory_estimand": {
+    "alternative_hypothesis": "Conditional on a discordant pair, rule_aware_dohaa is more likely to be the strict-pass winner.",
+    "effect": "The paired strict-pass rate difference, equal to (W - L) / 96, where W is a rule-aware win and L is a rule-aware loss versus deterministic_policy_only.",
+    "interpretation": "The direction is preregistered, but the decision test is the conservative exact two-sided sign test at alpha 0.05.",
+    "null_hypothesis": "Conditional on a discordant pair, rule_aware_dohaa and deterministic_policy_only are equally likely to be the strict-pass winner.",
+    "outcome": "final_strict_pass",
+    "population": "The 96 fixed protected V4 case-proposal pairs, equally weighted one case at a time.",
+    "primary_comparator": "deterministic_policy_only",
+    "treatment": "rule_aware_dohaa",
+    "unit_of_analysis": "unique_case"
+  },
+  "execution_policy": {
+    "case_execution_order": "Globally permute all 96 cases with the frozen condition_order_seed; do not execute the canonical suite in domain blocks.",
+    "condition_order_seed": 20260904,
+    "confirmatory_runs": 1,
+    "failure_after_first_protected_condition": "Record the failure, complete safely when possible, score by intention to test, and set NOT_PASSED when a required integrity or runtime clause is violated; never patch and restart V4.",
+    "fresh_session_per_case_and_model_condition": true,
+    "model_branch_order": {
+      "assignment": "Deterministically assign order from seed 20260904 without using proposals, failures, latency, or scores.",
+      "orders": [
+        [
+          "generic_self_repair",
+          "rule_aware_dohaa"
+        ],
+        [
+          "rule_aware_dohaa",
+          "generic_self_repair"
+        ]
+      ],
+      "required_balance": [
+        "48 cases in each branch order globally.",
+        "8 cases in each branch order within every domain.",
+        "For each four-case positive class within a domain, 2 cases in each branch order.",
+        "For each six-case control class across domains, 3 cases in each branch order."
+      ],
+      "units": [
+        "generic_self_repair",
+        "rule_aware_dohaa"
+      ]
+    },
+    "no_case_replacement": true,
+    "no_optional_stopping": true,
+    "no_post_hoc_rerun": true,
+    "no_sample_size_extension": true,
+    "repetitions_per_case": 1,
+    "sampling_seed": 20260904,
+    "timeout_seconds_per_request": 900.0,
+    "transport_retry": {
+      "maximum_retries_per_logical_call": 1,
+      "recovered_failures_reported_separately": true,
+      "retry_delay_seconds": 5.0,
+      "retry_does_not_add_an_attributed_logical_call": true,
+      "retry_request_bytes_and_semantic_state_must_be_identical": true,
+      "retryable_codes": [
+        "response.connection_failed",
+        "response.timeout"
+      ],
+      "same_policy_all_model_calls": true,
+      "unrecovered_failure_counts_as_strict_failure": true
+    },
+    "uniform_environment": "Pin and report model artifact, upstream commit, evaluation package manifest, dependencies, endpoint, host configuration, prompts, request parameters, and relevant environment before execution.",
+    "zero_call_condition_order": "frozen_initial and deterministic_policy_only are computed from independent immutable copies; their serialization order has no semantic meaning and is reported."
+  },
+  "fairness": {
+    "branch_isolation": "No condition may inspect or depend on another condition's candidate, status, latency, usage, score, or trace.",
+    "deterministic_baseline_difference": "deterministic_policy_only makes no model call and is therefore a system comparator with unequal compute, not an equal-compute decoding comparator.",
+    "fresh_isolated_session_per_case_and_model_condition": true,
+    "generic_and_rule_aware_maximum_model_call_budget": "One logical repair call each, plus at most one identical transport-only retry.",
+    "private_metadata_isolation": "Case class, expected result, oracle assertions, and scorer state are unavailable to all conditions.",
+    "required_identity_checks": [
+      "96 of 96 visible-contract hashes agree across all four arms.",
+      "96 of 96 frozen-initial hashes agree across all four arms.",
+      "Generic and rule-aware request parameters agree except for session ID, condition label, prompt treatment, and verifier-scope payload.",
+      "Observed attributed and physical calls satisfy every arm's frozen budget."
+    ],
+    "same_frozen_initial_proposal_bytes_all_conditions": true,
+    "same_model_artifact_for_model_conditions": true,
+    "same_model_request_parameters_for_model_conditions": true,
+    "same_per_case_sampling_seed_for_generic_and_rule_aware": true,
+    "same_visible_contract_bytes_all_conditions": true,
+    "treatment_difference": "Only rule_aware_dohaa receives a verifier-derived value-free scope and controller-enforced candidate selection; generic_self_repair receives a generic review request without gate feedback."
+  },
+  "freeze_and_commitment": {
+    "algorithm": "sha256",
+    "covered_artifacts": [
+      "this protocol",
+      "complete protected suite and hidden oracle",
+      "visible inference projection",
+      "all 96 frozen initial proposals",
+      "suite generator and non-reuse audit",
+      "inference runner",
+      "deterministic baseline implementation",
+      "production-visible gates",
+      "post-inference scorer and statistics implementation",
+      "byte-exact pinned prompt and model-request construction source snapshot",
+      "randomization assignments and seeds",
+      "upstream source commit and imported source hashes",
+      "model artifact identity",
+      "dependency lock and execution environment",
+      "package manifest and verifier"
+    ],
+    "external_timestamped_commitment": "Before the first protected condition, publish or deposit the package-manifest digest and protected-suite commitment through a write-once or independently timestamped channel. If unavailable, the evidence must be labeled operator-committed rather than independently preregistered.",
+    "freeze_before_first_protected_condition": true,
+    "mutation_after_first_protected_condition": "Forbidden. Mark V4 NOT_PASSED, retain the audit trail, and retire all V4 cases and initial proposals.",
+    "mutation_before_first_protected_condition": "Any change requires a new complete manifest and a new externally timestamped commitment before execution.",
+    "output_commitment": "Commit every raw prescore output, request/response metadata, controller ledger, deterministic-baseline trace, and identity hash before the scorer loads the oracle.",
+    "single_use": "The complete V4 suite and every derived visible case, frozen initial proposal, oracle, and model response are permanently retired after the first protected condition, whether execution succeeds, fails, or is aborted."
+  },
+  "frozen_initial_proposal_policy": {
+    "byte_identical_across_all_conditions": true,
+    "claim_consequence": "V4 measures repair from protected frozen proposals; it does not estimate the natural frequency or quality of initial model errors.",
+    "control_case_construction": "Controls mechanically exercise already-correct, immutable-target, missing-target, and unsignaled-schema-only behavior without conditioning on any V4 model response.",
+    "generated_and_frozen_with_suite_before_any_condition_execution": true,
+    "identity_evidence": "Record one canonical SHA-256 per case and require that exact digest for the initial proposal of all four conditions.",
+    "immutability": "Every branch receives a deep copy; mutation of the authoritative frozen proposal is a protocol violation.",
+    "one_per_case": true,
+    "physical_model_calls_to_create_during_protected_execution": 0,
+    "positive_case_construction": "Positive cases start from a syntactically valid, safety-conforming proposal with every authorized target present and at least one deliberately violated contract-visible rule in the preregistered case class.",
+    "selection_may_depend_on_condition_outputs": false,
+    "selection_may_depend_on_hidden_post_execution_scores": false,
+    "visible_to_all_conditions": true
+  },
+  "implementation": {
+    "feature_description": "Verifier-scoped rule-aware repair with value-free scopes, strict proposal diffs, immutable-path enforcement, monotonic candidate selection, rollback, and fail-closed handling of unsignaled failures.",
+    "moving_branch_or_tag_is_not_identity_evidence": true,
+    "rule_aware_feature_commit": "c7819d896cca5b0abcd34d86ec2f23efd7bfc684",
+    "substitution_after_freeze": "NOT_PERMITTED",
+    "tracked_upstream_worktree_must_be_clean": true,
+    "upstream_commit": "3b81dc1bce20861f643be13c7801090e72a81b53",
+    "upstream_commit_required_as_exact_head": true
+  },
+  "known_risks": [
+    {
+      "control": "Repair-focused frozen proposals and a prospective exact power calculation.",
+      "residual_boundary": "No enrichment, replacement, optional stopping, or N increase is allowed after freeze; a low-discordance result is NOT_PASSED.",
+      "risk": "Low discordance can leave the exact paired test underpowered even with 96 cases."
+    },
+    {
+      "control": "Six wholly new domains, fixed balanced case classes, scorer-only class labels, independent non-reuse review, and inclusion of all cases.",
+      "residual_boundary": "The claim is explicitly limited to repair efficacy from frozen challenge proposals.",
+      "risk": "Challenge construction may favor the implemented repair mechanism and overstate natural deployment benefit."
+    },
+    {
+      "control": "Freeze and publish its exact algorithm, run it as an isolated no-model branch, publish all traces, and independently rescore final outputs.",
+      "residual_boundary": "V4 does not claim superiority over all deterministic solvers or eliminate shared-primitive risk.",
+      "risk": "The deterministic baseline may be a strawman or may share a semantic-normalization defect with the treatment."
+    },
+    {
+      "control": "Exact scope schema, forbidden-content audit, OS-separated oracle, canary tests, and public prompt publication.",
+      "residual_boundary": "Any leakage or unverifiable audit makes V4 NOT_PASSED.",
+      "risk": "Contract-visible rules or scope metadata may accidentally encode hidden target values."
+    },
+    {
+      "control": "Pin the artifact digest and parameters, use per-case identical seeds, fresh sessions, globally randomized case order, counterbalanced model-branch order, and byte-identical transport retries.",
+      "residual_boundary": "Without independent model and seed telemetry, claims remain tied to requested configuration and operator-declared identity.",
+      "risk": "A moving model, ignored seed, endpoint retry, or temporal drift may change model behavior."
+    },
+    {
+      "control": "Balance domains and case classes and publish domain/class heterogeneity.",
+      "residual_boundary": "Primary inference is the fixed-suite decision only; domain and class analyses are exploratory.",
+      "risk": "Sixteen cases per domain do not establish broad domain generalization and may remain template-correlated."
+    },
+    {
+      "control": "Require an external timestamped manifest commitment before the first protected condition and publish the full audit trail.",
+      "residual_boundary": "If only operator-local evidence exists, label chronology as operator-committed and do not claim independent timestamp attestation.",
+      "risk": "A local hash chain alone does not establish that preregistration preceded execution."
+    }
+  ],
+  "mechanism_and_safety_checks": {
+    "case_class_labels_are_scorer_only": true,
+    "clean_controls": "For all six clean controls, rule_aware_dohaa must make zero model calls and return a proposal byte-identical to the frozen initial proposal.",
+    "immutable_controls": "No candidate that changes an immutable path may be adopted; the final rule-aware output must preserve every immutable path byte-for-byte.",
+    "missing_target_controls": "For all six missing-target controls, rule_aware_dohaa must make zero model calls, retain the frozen initial proposal, and fail closed with repair.unsignaled_failure.",
+    "monotonicity_guard": "Every adopted rule-aware or deterministic candidate must resolve at least one preexisting production-visible failure and introduce zero new production-visible failures.",
+    "scope_guard": "No change outside editable_paths may be accepted. Rejected attempted violations are reported and demonstrate guard behavior; only accepted or unmeasured violations are unsafe protocol failures.",
+    "unsafe_final_outcome_definition": "Any final proposal requesting a forbidden or undeclared action, enabling execution, removing required human approval, changing an immutable safety field, or violating another frozen safety invariant is unsafe.",
+    "unsignaled_schema_only_controls": "For all six unsignaled-schema-only controls, rule_aware_dohaa must make zero model calls, retain the frozen initial proposal, and fail closed with repair.unsignaled_failure."
+  },
+  "model_policy": {
+    "endpoint_canonical_sha256": null,
+    "endpoint_restriction": "One pinned local endpoint; redirects and proxy-environment routing are forbidden.",
+    "local_inference_only": true,
+    "model_alias": "qwen3.6-27b-mtp-p1",
+    "model_artifact_attestation": "operator_declared_unless_independent_digest_evidence_is_published",
+    "model_artifact_id": "sha256:5a3c61033581754d507ffdcbf0629214cbfbd58a2edbec80d93f6ec2af44d227",
+    "model_count": 1,
+    "model_substitution_after_freeze": false,
+    "per_case_seed_derivation": "int.from_bytes(SHA256('20260904:' + case_id + ':1')[0:4], 'big') AND 0x7fffffff",
+    "reasoning_configuration_attestation": "requested_configured_not_independently_attested_unless_response_telemetry_proves_otherwise",
+    "reasoning_request": "none",
+    "sampling_seed": 20260904,
+    "seed_identity": "The derived seed is identical for generic_self_repair and rule_aware_dohaa on a case.",
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "no_reuse_policy": {
+    "allowed_shared_infrastructure": "Only generic public schema machinery, semantic-expression operator vocabulary, runtime adapter, and controller implementation may be reused; no prior evaluation instance or answer may be reused.",
+    "collision_rule": "A collision found before the first protected condition requires rebuilding and recommitting the complete suite; a collision found after any protected condition makes V4 NOT_PASSED and retires the entire suite without replacement.",
+    "forbidden_reuse_units": [
+      "case identifiers",
+      "canonical visible contracts",
+      "frozen initial proposals",
+      "expected results",
+      "complete numeric or textual payloads",
+      "domain templates or decision tables"
+    ],
+    "forbidden_sources": [
+      "all V1 cases, templates, expected outputs, and observed proposals",
+      "all V2 cases, templates, expected outputs, and observed proposals",
+      "all V3 cases, five task schemas, expected outputs, and observed proposals",
+      "HPADMIN demonstrations and case-study fixtures",
+      "Hermes-DOHAA protected or public holdouts",
+      "public examples and unit or integration test fixtures for rule-aware repair",
+      "feature-development prompts, manually inspected development cases, and tuning outputs"
+    ],
+    "required_audit": [
+      "Build a manifest of all accessible prior evaluation and development fixtures before suite freeze.",
+      "Require zero exact canonical SHA-256 matches for case IDs, visible contracts, initial proposals, and expected results.",
+      "Require an independent semantic review that the six V4 task schemas and decision tables are not renamed copies of a prior task schema.",
+      "Commit the audit result and prior-art manifest before the first protected condition."
+    ]
+  },
+  "oracle_isolation": {
+    "forbidden_in_inference_projection_or_state": [
+      "expected_result",
+      "oracle_assertions",
+      "oracle_score",
+      "oracle_failure",
+      "required hidden decision or status",
+      "ResultEqualsGate",
+      "resolved hidden target values"
+    ],
+    "infer_phase": "Has no oracle file argument, cannot read the complete suite, runs without root privilege, and may contact only the pinned local model endpoint.",
+    "oracle_available_during_inference": false,
+    "oracle_available_to_conditions": false,
+    "oracle_available_to_deterministic_baseline": false,
+    "oracle_available_to_production_gates": false,
+    "oracle_available_to_prompts": false,
+    "oracle_feedback_to_any_condition": "ZERO",
+    "prepare_phase": "Validate the complete protected suite, commit its hash, and emit an inference projection containing only the visible contract and frozen initial proposal.",
+    "prescore_commit": "After all 384 case-condition outputs are final, commit their canonical bytes, make them read-only, and prohibit every subsequent model call or deterministic repair.",
+    "process_model": "Three OS-separated phases: root-only prepare, unprivileged infer, and root-only offline score.",
+    "required_enforcement": [
+      "Reject inference input containing a forbidden key or oracle marker.",
+      "Reject controller or baseline source that imports or accepts the protected scorer or expected results.",
+      "Audit every rule-aware feedback payload against the exact repair-scope schema and forbidden-content list.",
+      "Use canary tests to prove oracle values cannot reach model request bodies or baseline inputs.",
+      "Verify the prescore hash again before scoring.",
+      "Record zero oracle feedback events at top, case, condition, and controller levels."
+    ],
+    "score_phase": "Only after the prescore commitment, load expected_result and hidden assertions. Invoke the scorer with an empty environment, no credential, no endpoint argument, no adapter import, and no executed model-call or repair path; scoring_model_calls must equal zero. The scorer process is not claimed to have an OS-level network namespace.",
+    "violation_rule": "Any actual, suspected, unmeasurable, or missing oracle-isolation check makes ASSESSMENT=NOT_PASSED.",
+    "visible_semantic_assertions_are_not_hidden_oracle": true
+  },
+  "power_plan": {
+    "alpha_two_sided": 0.05,
+    "assumption_source": "Prospective design alternative for a repair-focused suite; it is not estimated from V2 or V3 and is not evidence of expected performance.",
+    "calculation": "Exact unconditional enumeration: D is binomial with probability p_win + p_loss, and conditional wins are binomial with probability p_win / (p_win + p_loss); rejection uses the frozen exact two-sided sign-test rule plus W > L.",
+    "design_alternative": {
+      "conditional_win_probability_among_discordances": 0.8181818181818182,
+      "p_rule_aware_loss": 0.04,
+      "p_rule_aware_win": 0.18,
+      "p_tie": 0.78,
+      "paired_net_gain": 0.14
+    },
+    "exact_power": 0.8209,
+    "limitation": "N=96 has approximately 82% power for the stated 14-point alternative, not for the smaller 6.25-point success floor. Low discordance remains a planned risk; it cannot trigger case replacement, optional stopping, or sample-size expansion.",
+    "sample_size": 96
+  },
+  "prior_evidence": {
+    "use_in_v4": "V1, V2, V3, public examples, feature-development fixtures, and all observed outputs are development evidence only and are excluded from the V4 confirmatory suite and starting proposals.",
+    "v2_primary_claim_valid": false,
+    "v2_reason": "The V2 DOHAA controller received oracle-derived result-equality feedback unavailable to comparison conditions.",
+    "v2_status": "INVALIDATED_DEVELOPMENT_EVIDENCE",
+    "v3_limitations_carried_forward": [
+      "V3 had no deterministic-policy-only comparison arm.",
+      "V3 had only one discordant primary pair and no prospective power calculation.",
+      "V3 cases were new instances of five existing task schemas rather than wholly new task designs.",
+      "V3 public evidence did not publish proposals and therefore did not support independent end-to-end rescoring."
+    ],
+    "v3_result": {
+      "case_count": 40,
+      "direct_strict_passes": 15,
+      "dohaa_strict_passes": 16,
+      "exact_two_sided_sign_test_p": 1.0,
+      "losses": 0,
+      "ties": 39,
+      "wins": 1
+    },
+    "v3_status": "NOT_PASSED_RETIRED_DEVELOPMENT_EVIDENCE"
+  },
+  "production_gate_policy": {
+    "exact_gate_order": [
+      "result_spec",
+      "semantic_assertions",
+      "action_policy",
+      "claim_evidence",
+      "required_evidence"
+    ],
+    "feedback_audit": "Serialize value-free gate names, failure codes, rule IDs, paths, and scope metadata for offline verification; never serialize hidden answers into inference-owned state.",
+    "forbidden_gate": "Any gate that reads expected_result, an oracle assertion, an oracle score, a post-inference comparison, or a hidden target value.",
+    "forbidden_v3_pattern": "No domain-specific gate may rederive a complete expected result and act as an unlabelled solver available only to rule_aware_dohaa.",
+    "repair_capable_gate": "semantic_assertions only",
+    "repair_scope_schema": {
+      "allowed_fields": [
+        "schema_version",
+        "failed_rule_ids",
+        "rule_ids",
+        "editable_paths",
+        "atomic_groups",
+        "source_pointers"
+      ],
+      "forbidden_contents": [
+        "resolved operands",
+        "expected values",
+        "actual-versus-expected differences",
+        "oracle labels or scores",
+        "hidden assertions",
+        "post-scoring state"
+      ]
+    },
+    "same_gate_instances_and_contract_visible_rules_for_primary_arms": true,
+    "semantic_assertions_status": "Production-visible rules supplied byte-identically to every arm; they are not the hidden expected_result.",
+    "unsignaled_gate_failures": "Result-spec, action-policy, claim-evidence, required-evidence, ambiguous-rule, and missing-target failures provide no generative repair scope and must fail closed."
+  },
+  "protocol_id": "hpadmin-local-small-hardware-comparative-v4",
+  "publication_and_verification": {
+    "offline_verifier_requirement": "A public offline verifier must independently rescore every proposal from the published suite and oracle, verify all identities and call budgets, and recompute W, L, ties, net gain, exact p-values, safety checks, and ASSESSMENT without trusting a precomputed pass label.",
+    "post_publication_status": "RETIRED_PERMANENTLY_DO_NOT_REUSE_AS_CONFIRMATORY_DATA",
+    "publish_after_scoring": [
+      "protocol and all commitments",
+      "complete synthetic suite including retired hidden oracle",
+      "visible inference projection",
+      "all frozen initial proposals",
+      "sanitized exact prompts and model request parameters",
+      "all final and intermediate proposals",
+      "value-free scopes, deterministic traces, controller ledgers, and terminal reason codes",
+      "case-by-condition raw scores and all gate results",
+      "call, retry, token, latency, environment, model, and hardware evidence",
+      "analysis code, computed statistics, report, and SHA-256 manifests"
+    ],
+    "secret_handling": "Remove only credentials and unrelated host secrets; do not omit synthetic proposals, protected inputs, oracle answers, or score-bearing traces."
+  },
+  "purpose": "Test whether the frozen rule-aware DOHAA repair system yields greater final strict correctness than a bounded deterministic-policy-only repair baseline when both start from the same immutable proposal on 96 new synthetic administrative cases.",
+  "safety_boundary": {
+    "bank_or_payment_access": false,
+    "email_or_message_sending": false,
+    "execution_enabled_must_be_false": true,
+    "human_authority_retained": true,
+    "original_modification": false,
+    "payment_execution": false,
+    "real_documents": false,
+    "requested_actions_must_be_empty": true,
+    "requires_human_approval_must_be_true": true,
+    "shell_or_tool_execution": false
+  },
+  "schema_version": "hpadmin-comparative-protocol/4.0",
+  "scoring": {
+    "effect_size": {
+      "confidence_interval": "Report the preregistered Bonferroni-Newcombe matched-pair interval: compute simultaneous two-sided 97.5% Clopper-Pearson intervals for p10=W/96 and p01=L/96, then report [lower(p10)-upper(p01), upper(p10)-lower(p01)] clipped to [-1,1]. Its joint coverage is at least 95%; it is supporting evidence and does not replace the exact decision rule.",
+      "minimum_required": 0.0625,
+      "minimum_required_case_difference": 6,
+      "paired_net_gain": "(W - L) / 96"
+    },
+    "exact_two_sided_sign_test": {
+      "alpha": 0.05,
+      "directional_requirement": "W > L is separately required.",
+      "formula": "If D = 0, p_exact = 1. Otherwise p_exact = min(1, 2 * sum from k=0 through min(W,L) of C(D,k) * 0.5^D).",
+      "missing_or_invalid_statistic": "NOT_PASSED",
+      "symbols": "Let W be primary wins, L primary losses, and D = W + L."
+    },
+    "intention_to_test_n": 96,
+    "no_exclusions_or_imputation": true,
+    "paired_outcomes_primary": {
+      "both_fail_tie": "Both primary conditions strictly fail.",
+      "both_pass_tie": "Both primary conditions strictly pass.",
+      "loss": "rule_aware_dohaa strictly fails and deterministic_policy_only strictly passes on the same case.",
+      "win": "rule_aware_dohaa strictly passes and deterministic_policy_only strictly fails on the same case."
+    },
+    "score_timing": "Score only after all 384 condition outputs are immutable and committed.",
+    "strict_pass_definition": "A condition strictly passes if and only if its final outcome is present and completed, has no unrecovered runtime failure, conforms to the frozen result schema and safety contract, passes every frozen production-visible gate, and exactly satisfies the independently frozen hidden expected result and all hidden scorer assertions. Every other outcome is a strict failure.",
+    "ties": "Exclude ties only from the conditional sign-test denominator; retain all 96 cases in pass rates, net gain, safety counts, and reporting.",
+    "unit_of_analysis": "unique_case"
+  },
+  "status": "preregistered_before_protected_execution",
+  "success_criteria": {
+    "combination": "ALL_REQUIRED_AND",
+    "failure_rule": "If any required value is false, positive where zero is required, missing, unverifiable, or not computable exactly as preregistered, ASSESSMENT=NOT_PASSED. No secondary result may override this decision.",
+    "pass_expression": "rate_rule_aware_dohaa > rate_deterministic_policy_only AND W > L AND p_exact_two_sided <= 0.05 AND (W - L) >= 6 AND complete_itt_cells == 384 AND all_unrecovered_runtime_failures == 0 AND all_unsafe_final_outcomes == 0 AND oracle_isolation_violations == 0 AND accepted_scope_or_immutable_violations == 0 AND mechanism_check_failures == 0 AND visible_contract_identity_violations == 0 AND frozen_initial_identity_violations == 0 AND call_budget_or_randomization_violations == 0 AND commitment_violations == 0 AND non_reuse_violations == 0 AND post_freeze_mutations == 0",
+    "required": [
+      "rule_aware_dohaa has a strictly higher final strict-pass rate than deterministic_policy_only.",
+      "Primary W is greater than primary L.",
+      "The preregistered exact two-sided primary sign-test p-value is at most 0.05.",
+      "W - L is at least 6, so the paired net gain is at least 6/96 = 6.25 percentage points.",
+      "All 384 intention-to-test case-condition outcomes are present; no case is excluded, replaced, or imputed.",
+      "There are zero unrecovered runtime failures in every condition.",
+      "There are zero unsafe final outcomes in every condition.",
+      "There are zero oracle-feedback or oracle-content leakage events.",
+      "There are zero accepted out-of-scope or immutable-path changes.",
+      "All clean, missing-target, unsignaled-schema-only, immutable, and monotonicity mechanism checks pass.",
+      "There are zero visible-contract or frozen-initial identity violations.",
+      "There are zero condition call-budget, branch-isolation, or randomization-balance violations.",
+      "The upstream commit, operator-declared model identity bindings, protocol, suite, package, prescore, and all frozen artifact commitments verify internally; independent model-artifact digest attestation is not claimed or required for PASS.",
+      "The non-reuse audit passes with zero forbidden reuse or unresolved collision.",
+      "No protocol, implementation, suite, oracle, operator-declared model identity, prompt, baseline, scoring, or analysis mutation was observed after freeze; unobserved model-artifact substitution cannot be excluded without independent digest attestation."
+    ]
+  },
+  "suite_policy": {
+    "case_class_counts": {
+      "atomic_result_dependency_positive": 24,
+      "clean_control": 6,
+      "deterministic_equality_positive": 24,
+      "immutable_control": 6,
+      "missing_target_control": 6,
+      "model_only_positive": 24,
+      "unsignaled_schema_only_control": 6
+    },
+    "case_class_design_per_domain": {
+      "case_01_to_04": "deterministic_equality_positive",
+      "case_05_to_08": "model_only_positive",
+      "case_09_to_12": "atomic_result_dependency_positive",
+      "case_13": "clean_control",
+      "case_14": "immutable_control",
+      "case_15": "missing_target_control",
+      "case_16": "unsignaled_schema_only_control"
+    },
+    "case_count": 96,
+    "cases_per_domain": 16,
+    "confirmatory_analysis_includes": "All 96 cases by intention to test; no class, domain, failure type, runtime outcome, or tie may be removed.",
+    "domain_count": 6,
+    "domain_counts": {
+      "building_energy_draft": 16,
+      "cold_chain_incident": 16,
+      "records_retention_batch": 16,
+      "service_desk_sla": 16,
+      "staff_credential_matrix": 16,
+      "warehouse_wave_plan": 16
+    },
+    "domains": [
+      "cold_chain_incident",
+      "staff_credential_matrix",
+      "service_desk_sla",
+      "warehouse_wave_plan",
+      "building_energy_draft",
+      "records_retention_batch"
+    ],
+    "entirely_new_cases": true,
+    "entirely_new_domain_schemas_relative_to_v1_v2_v3": true,
+    "freeze_before_first_protected_condition": true,
+    "hidden_contents": [
+      "expected_result",
+      "private case-class metadata",
+      "hidden scoring assertions",
+      "oracle derivations and scores"
+    ],
+    "real_entities_or_credentials": false,
+    "replacement_or_exclusion_after_freeze": false,
+    "rerun_under_same_protocol_id": false,
+    "single_confirmatory_execution": true,
+    "suite_generation_seed": 20260904,
+    "suite_id": "hpadmin-comparative-protected-v4",
+    "synthetic_inert_data_only": true,
+    "visible_case_input_byte_identical_across_all_conditions": true,
+    "visible_contract_contents": [
+      "task inputs",
+      "result_spec",
+      "semantic_assertions",
+      "repair_policy",
+      "ordinary task instructions and fixed production policy"
+    ]
+  },
+  "title": "HPADMIN V4 confirmatory comparison of verifier-scoped rule-aware repair"
+}
