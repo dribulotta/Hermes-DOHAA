@@ -1,0 +1,45 @@
+{
+  "audit_completed_before_freeze": true,
+  "audited_sources_count": 40,
+  "exact_collision_counts": {
+    "case_id": 0,
+    "expected_result": 0,
+    "initial_proposal": 0,
+    "visible_contract": 0
+  },
+  "observed_prior_proposals_included": true,
+  "publication_projection": {
+    "frozen_schema_mismatch_preserved": true,
+    "original_suite_link_publicly_reverified": false,
+    "prior_art_inventory_published": false,
+    "prior_art_inventory_status": "WITHHELD_PRIVATE_SOURCE_METADATA",
+    "schema_version": "hpadmin-nonreuse-public-projection/1.0"
+  },
+  "schema_version": "1.0",
+  "semantic_schema_review": {
+    "domain_id_overlap_count": 0,
+    "finding": "The six nested repair-target schemas, frozen mutations, atomic result dependencies, and control cases are not renamed copies of V3 invoice, payment-schedule, budget, procurement, or exception-triage templates. Repository fixtures, holdouts, examples, and tests were included in the prior-art manifest.",
+    "passed": true,
+    "prior_decision_table_reuse_detected": false,
+    "renamed_prior_schema_detected": false,
+    "reviewed_v3_domains": [
+      "invoice_reconciliation",
+      "payment_schedule",
+      "budget_reconciliation",
+      "procurement_selection",
+      "exception_triage"
+    ],
+    "reviewed_v4_domains": [
+      "cold_chain_incident",
+      "staff_credential_matrix",
+      "service_desk_sla",
+      "warehouse_wave_plan",
+      "building_energy_draft",
+      "records_retention_batch"
+    ],
+    "status": "pass"
+  },
+  "suite_generation_seed": 20260904,
+  "suite_id": "hpadmin-comparative-protected-v4",
+  "unresolved_collisions": 0
+}

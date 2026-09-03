@@ -1,0 +1,115 @@
+{
+  "byte_exact_and_recomputed": {
+    "final_proposals_rescored": 384,
+    "formal_assessment_reproduced": true,
+    "retired_suite_content_consistent_with_generator": true,
+    "retired_suite_canonical_sha256": "b9911d35fbdbea17911857db508ba281a42b69ab2353fbeaa7bf741c797070ce",
+    "trace_proposals_rescored": 738
+  },
+  "endpoint_protection": {
+    "direct_unsalted_endpoint_digest_published": false,
+    "endpoint_identity_publicly_verifiable": false,
+    "endpoint_plaintext_published": false,
+    "transitive_original_endpoint_commitments_included_in_this_archive": false,
+    "withheld_field_value": null
+  },
+  "generated_on": "2026-09-03",
+  "historical_source_recorded_not_reverified": {
+    "model_artifact_identity": "OPERATOR_DECLARED_NOT_INDEPENDENTLY_ATTESTED",
+    "original_commitment_chain": "PARTIAL_NOT_PUBLICLY_REVERIFIED",
+    "original_endpoint_binding": "WITHHELD",
+    "original_external_timestamp": "NOT_PUBLICLY_REVERIFIED",
+    "original_package_integrity": "NOT_CLAIMED_BY_THIS_DERIVATIVE",
+    "original_prescore_chronology": "RESTRICTED_RECORD_ATTESTATION"
+  },
+  "omitted_original_material": [
+    "original endpoint-bearing protocol bytes and their hashes",
+    "original protocol, prescore, result, runner, metadata, package, and public-bundle digests that could confirm endpoint guesses",
+    "original model, execution, dependency, import, and external-timestamp evidence",
+    "original package and public-bundle manifests",
+    "original prescore commitment sidecar",
+    "original launcher, runner, collector, renderer, attestation verifier, and package verifier",
+    "original pre-execution and public-bundle READMEs",
+    "private non-reuse prior-art inventory",
+    "original unsanitized public-candidate archive and its digest"
+  ],
+  "performed_after_scoring": true,
+  "reason_code": "PRIVATE_ENDPOINT_DICTIONARY_RECOVERY_RISK",
+  "retained_nonendpoint_historical_commitments": {
+    "paths": [
+      "/private_suite_metadata/non_reuse_audit/audit_sha256",
+      "/private_suite_metadata/non_reuse_audit/prior_art_manifest_sha256"
+    ],
+    "privacy_note": "These hashes can confirm a correct offline guess of the withheld prior-art inventory; they do not bind or encode the private endpoint.",
+    "reason_retained": "Preserve the retired suite byte for byte and keep its canonical identity unchanged.",
+    "source_inventory_published": false
+  },
+  "redaction_scope": {
+    "dependent_digest_paths": [
+      "/inference_commitment/protocol_sha256",
+      "/scored_result/protocol_sha256",
+      "/scored_result/prescore_sha256",
+      "/inference_commitment/runtime_policy/evaluator_sha256",
+      "/scored_result/runtime_policy/evaluator_sha256",
+      "/inference_commitment/runtime_policy/execution_code_commit",
+      "/scored_result/runtime_policy/execution_code_commit",
+      "/inference_commitment/suite_commitment/protocol_commit",
+      "/scored_result/suite_commitment/protocol_commit",
+      "/inference_commitment/suite_commitment_sha256",
+      "/scored_result/suite_commitment_sha256"
+    ],
+    "direct_endpoint_identity_paths": [
+      "/protocol/model_policy/endpoint_canonical_sha256",
+      "/inference_commitment/runtime_policy/endpoint_canonical_sha256",
+      "/scored_result/runtime_policy/endpoint_canonical_sha256"
+    ],
+    "legacy_literal_occurrences_withheld": 19
+  },
+  "retained_evidence": {
+    "all_controller_and_deterministic_traces": true,
+    "all_final_proposals": true,
+    "all_frozen_initial_proposals": true,
+    "all_gate_and_oracle_scores": true,
+    "all_intermediate_and_rejected_candidates": true,
+    "case_condition_outcomes": 384,
+    "complete_synthetic_oracle": true,
+    "complete_synthetic_suite": true,
+    "controller_ledger_records": 1056,
+    "feedback_events": 150,
+    "model_units": 192,
+    "physical_request_attempts": 151,
+    "request_parameters": true,
+    "synthetic_cases": 96,
+    "trace_proposals": 738
+  },
+  "sanitized_projection_operator_attested": {
+    "endpoint_or_transitive_digest_inserted": false,
+    "original_suite_byte_exact": true,
+    "proposal_or_score_fields_changed": false,
+    "protocol_scoring_rules_preserved": true,
+    "publication_projection_created_after_scoring": true,
+    "source_tar_byte_identity_claimed": false
+  },
+  "schema_version": "hpadmin-public-sanitization-manifest/1.0",
+  "source_record": {
+    "assessment": "NOT_PASSED",
+    "evaluation_id": "4deef094-78a4-4330-918b-ea45fa9b04fb",
+    "protocol_id": "hpadmin-local-small-hardware-comparative-v4",
+    "scoring_completed_at": "2026-09-03T04:48:47.269065+00:00",
+    "suite_id": "hpadmin-comparative-protected-v4"
+  },
+  "transformation": {
+    "historical_endpoint_and_dependent_digest_fields": "replaced with JSON null",
+    "new_projection_bindings": "stored only under public_projection_bindings and the publication-only SHA256SUMS",
+    "non_reuse_audit": "projected without the private prior-art inventory; frozen schema mismatch retained",
+    "scope": "post-score publication only; suite, oracle, proposals, traces, scores, and outcome labels unchanged"
+  },
+  "verifier_boundary": {
+    "aggregate_statistics_recomputed": true,
+    "exact_paired_tests_recomputed": true,
+    "formal_negative_result_independent_of_withheld_commitment_status": true,
+    "original_commitment_chain_verified": false,
+    "original_external_timestamp_verified": false,
+    "original_model_endpoint_verified": false
+  }
+}

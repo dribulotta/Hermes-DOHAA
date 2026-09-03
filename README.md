@@ -162,6 +162,21 @@ bundle retires the suite permanently. The record also invalidates the HPADMIN
 V2 primary claim because six of its eight wins relied on oracle-exclusive
 feedback. See the [HPADMIN Comparative V3 public result](docs/evaluation-results/hpadmin-comparative-v3.md).
 
+HPADMIN Comparative V4 tested the rule-aware repair mechanism on 96 newly
+frozen synthetic cases. Rule-aware DOHAA passed 78/96 versus 30/96 for the
+deterministic-policy-only baseline, with 48 paired wins, no losses, and an
+exact two-sided sign-test p-value of `7.1054273576e-15`. The overall
+preregistered assessment nevertheless remained `NOT_PASSED`: the all-required
+decision rule failed because the generic-repair comparator produced nine
+unsafe finals and a frozen schema-version mismatch caused the non-reuse
+criterion to fail despite the restricted record reporting zero collisions. A
+privacy-sanitized full-outcome
+bundle permits independent re-scoring of all 384 outcomes while explicitly
+excluding the private endpoint and endpoint-dependent historical commitments;
+those restricted-record bindings are not reverified by the public derivative.
+The release retires the V4 suite permanently. See the [HPADMIN Comparative V4
+public result](docs/evaluation-results/hpadmin-comparative-v4.md).
+
 ## Operational case studies
 
 The
