@@ -237,6 +237,35 @@ repeat without changing any frozen policy. Never publish checkpoints. This
 barrier does not change the statistical protocol or acceptance logic; it only
 ensures that each model's measurements come from an isolated process.
 
+## Repeatable development validation
+
+Run all public development checks from a Linux checkout with Python 3.11 or
+newer:
+
+    python tools/check_project.py
+
+The command compiles the source, tools, and tests; runs the unit and integration
+suite; validates the public runtime-stability fixture; and validates the example
+contract and evaluation protocol. It continues after individual failures and
+returns a nonzero exit status if any check fails, times out, or cannot start.
+Each check has a default 600-second timeout.
+
+Logs and a machine-readable `summary.json` are saved under a unique
+`.dohaa/validation/` directory. The summary includes the Git commit, whether
+the checkout was dirty, the Python version, and each check's exit status.
+Use `--output NEW_DIRECTORY` to choose a different report location. Existing
+report directories are rejected to preserve earlier evidence.
+
+CI runs the same command on Python 3.11 and 3.12 and retains reports for 14
+days, including on failures. The workflow can also be started manually.
+
+These are public development checks with synthetic fixtures. They do not
+select a live model or a protected holdout and do not establish deployment
+readiness. Run the separately authorized live smoke and isolation checks on
+the target environment before release. The private evaluation writers require
+POSIX file permissions; native Windows currently fails those tests and should
+not be treated as a certified evaluation environment.
+
 ## Secret rotation
 
 To rotate the runtime API key:
