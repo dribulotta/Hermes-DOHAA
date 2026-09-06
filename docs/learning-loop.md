@@ -240,6 +240,58 @@ temporary file, which must never be treated as a published candidate. A storage
 error after publication may leave a complete candidate; verify it against the
 retained ID before retrying, and never overwrite it to hide the failure.
 
+## Verify referenced artifacts before evaluation
+
+The offline artifact checker resolves the quarantined candidate's baseline and
+evidence digests to actual files. First, an authorized operator stages the
+required artifacts in a private directory outside active runtime paths. Each
+file must be named with its exact lowercase SHA-256 digest, without an extension
+or subdirectory. Directory ownership and all ancestor directories must prevent
+the cognitive runtime from replacing entries. Use ordinary local files in an
+operator-controlled directory; do not use device files or a network filesystem.
+
+Run the checker with the candidate ID retained independently at quarantine:
+
+```sh
+python -m hermes_dohaa.learning.artifacts /path/to/private-candidate.json \
+  --candidate-id RETAINED_SHA256 --artifact-dir /path/to/private-artifacts
+```
+
+The checker verifies the candidate first, opens the artifact directory once,
+and accesses only the digest-named files it references. It never accepts paths
+or URLs from a candidate, scans directories, extracts archives, parses artifact
+contents or executes proposed code. All files are opened read-only. A directory
+descriptor anchors lookups; symbolic links, directories and other special file
+types are rejected. Nonblocking file opens prevent a FIFO from hanging the
+checker before its type can be inspected. This filesystem boundary requires
+POSIX descriptor-relative operations; native Windows fails before opening files.
+
+Each file is limited to 64 MiB and the combined unique artifacts to 256 MiB.
+Hashing uses 64 KiB chunks and rechecks the byte budget while reading; a growing
+file can consume at most one detection byte beyond the remaining budget before
+the entire check fails. Repeated digests are read once, while every baseline or
+evidence role remains represented in the report. Files missing from the store,
+incorrect digests, observed in-place changes and entry replacements fail closed.
+Metadata is checked before and after each read and all entries are checked
+again before success is reported.
+
+A successful `hermes-candidate-artifacts/1.0` report contains the candidate ID,
+the unchanged `quarantined` state, each reference's role, expected SHA-256 and
+verified size, plus unique-file and total-byte counts. It contains no paths,
+artifact contents or computed digests for mismatched files. The CLI returns
+nonzero with a safe `candidate.*` or `artifacts.*` code on failure. Keep any
+retained report in the independent private evidence system; this command writes
+only its JSON result to standard output and does not modify candidate files.
+
+This is an **artifact-integrity-only** prerequisite. It proves that the bytes
+read matched the candidate's committed references under the stated filesystem
+assumptions. It does not establish provenance, truth of evidence, a test verdict,
+approver identity or permission to activate the candidate. Metadata comparisons
+detect observed races but do not create an atomic filesystem snapshot or prevent
+later writes. An evaluator must reverify the artifacts it actually consumes,
+or use a separately enforced immutable snapshot. Only authorized independent
+evaluators may handle protected artifacts; do not expose them to the generator.
+
 ## Candidate lifecycle
 
 Beyond this initial quarantine primitive, a governed-learning subsystem still
