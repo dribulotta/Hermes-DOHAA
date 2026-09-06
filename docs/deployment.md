@@ -75,6 +75,59 @@ The runtime profile used by the API must have:
 These controls must be verified from the constructed agent object.
 Configuration inspection alone is insufficient.
 
+### Check the constructed profile before inference
+
+Create a disposable profile directory for validation, separate from every live
+Hermes home. It needs a `config.yaml` with the selected model connection and
+explicit runtime restrictions. With current Hermes, the gateway's iteration
+budget is configured through `agent.max_turns`, not `agent.max_iterations`:
+
+```yaml
+platform_toolsets:
+  api_server: []
+agent:
+  max_turns: 1
+  tool_use_enforcement: false
+  execution_guidance: false
+  disabled_toolsets: [] # Populate with every installed toolset name.
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  provider: ""
+mcp_servers: {}
+```
+
+The empty `disabled_toolsets` above is a placeholder, not a complete isolation
+configuration. Enumerate the pinned installation's toolsets, including plugins,
+and explicitly disable them. Do not copy hooks, plugins, memory, session history
+or credentials for unrelated services into the test profile.
+
+Run the check with the Python environment that contains Hermes Agent:
+
+    /opt/hermes-runtime/venv/bin/python tools/check_hermes_profile.py \
+      --profile-dir /path/to/disposable-test-profile
+
+This constructs an API-server agent using Hermes' own factory. It does not call
+`run_conversation` or request a model completion. Construction can create runtime
+state in the supplied profile, so the directory must be disposable. The checker
+returns nonzero when construction fails, expected attributes are missing, tools
+remain callable, the iteration budget differs from one, tool-use enforcement
+remains enabled, or memory facilities remain active. Its JSON report contains
+only boolean findings; model URLs, credentials, tool names and native constructor
+logs are not included.
+
+The checker depends on Hermes' internal API factory and attributes. A version
+change can make the check fail closed and require an explicit compatibility
+review. A passing result describes that constructed agent; it does not certify
+the operating-system sandbox, network isolation, later configuration changes or
+the full live service. In a disposable end-to-end test, check the actual agent
+created for each request and verify the resulting transcript contains no tool
+execution before evaluating the smoke result.
+
+Do not use a model's empty `requested_actions` list as evidence that the runtime
+did not execute tools internally. The HTTP tool catalog is also insufficient as
+an isolation certificate: it may omit custom or implicitly enabled tools.
+
 ## 3. Configure the API service
 
 Copy `deploy/env/runtime.env.example` outside the repository and replace every
