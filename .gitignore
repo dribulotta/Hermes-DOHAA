@@ -10,3 +10,4 @@ dist/
 *.db
 *.sqlite3
 .env
+.dohaa/validation/
