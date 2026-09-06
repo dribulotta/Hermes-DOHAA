@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import socket
 import urllib.error
@@ -20,6 +21,7 @@ from hermes_dohaa.runtime.usage import (
 
 
 _REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh"})
+_MAX_JSON_CONTAINER_DEPTH = 128
 
 
 class HermesApiError(RuntimeError):
@@ -226,12 +228,12 @@ class HermesApiRuntime:
             content=response_bytes,
         )
         try:
-            payload = json.loads(response_bytes)
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            payload = _load_admissible_json(response_bytes)
+        except (ValueError, RecursionError) as exc:
             self._record_usage(unavailable_usage("response.json_invalid"))
             raise HermesApiError(
                 "response.json_invalid",
-                "Hermes returned a non-JSON HTTP response",
+                "Hermes returned an invalid or unsupported JSON HTTP response",
                 response_details,
             ) from exc
 
@@ -284,17 +286,29 @@ def parse_proposal_content(content: Any) -> Proposal:
     stripped = content.strip()
     if stripped.startswith("```"):
         lines = stripped.splitlines()
-        if lines and lines[0].strip().lower() in {"```", "```json"}:
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        stripped = "\n".join(lines).strip()
+        if (
+            len(lines) < 3
+            or lines[0].strip().lower() not in {"```", "```json"}
+            or lines[-1].strip() != "```"
+        ):
+            raise HermesApiError(
+                "proposal.content_non_json",
+                "Hermes returned non-JSON proposal content",
+                details,
+            )
+        stripped = "\n".join(lines[1:-1]).strip()
     try:
-        raw = json.loads(stripped)
+        raw = _load_admissible_json(stripped)
     except json.JSONDecodeError as exc:
         raise HermesApiError(
             "proposal.content_non_json",
             "Hermes returned non-JSON proposal content",
+            details,
+        ) from exc
+    except (ValueError, RecursionError) as exc:
+        raise HermesApiError(
+            "proposal.content_invalid",
+            "Hermes returned ambiguous or unsupported JSON proposal content",
             details,
         ) from exc
     if not isinstance(raw, dict):
@@ -307,6 +321,52 @@ def parse_proposal_content(content: Any) -> Proposal:
         raise HermesApiError(
             "proposal.schema_invalid", "Hermes proposal schema is invalid", details
         ) from exc
+
+
+def _load_admissible_json(content: str | bytes) -> Any:
+    """Decode one unambiguous, finite, UTF-8-serializable JSON value.
+
+    Apply the same admission rules to the API envelope and proposal content.
+    Depth is bounded separately from the interpreter's decoder recursion limit.
+    """
+    value = json.loads(
+        content,
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_constant,
+    )
+    pending = [(value, 0)]
+    while pending:
+        item, depth = pending.pop()
+        if isinstance(item, (dict, list)):
+            depth += 1
+            if depth > _MAX_JSON_CONTAINER_DEPTH:
+                raise ValueError("JSON container depth exceeds admission limit")
+            if isinstance(item, dict):
+                for key in item:
+                    key.encode("utf-8")
+                children = item.values()
+            else:
+                children = item
+            pending.extend((child, depth) for child in children)
+        elif isinstance(item, str):
+            item.encode("utf-8")
+        elif isinstance(item, float) and not math.isfinite(item):
+            raise ValueError("JSON numbers must be finite")
+    return value
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("JSON object keys must be unique")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> Any:
+    del value
+    raise ValueError("JSON numbers must be finite")
 
 
 def _content_type(headers: Any) -> str | None:
@@ -343,7 +403,13 @@ def _response_details(
 
 
 def _content_details(content: str) -> dict[str, Any]:
-    encoded = content.encode("utf-8")
+    encoding_details: dict[str, Any] = {}
+    try:
+        encoded = content.encode("utf-8")
+    except UnicodeEncodeError:
+        # Preserve a diagnostic digest without admitting invalid Unicode.
+        encoded = content.encode("utf-8", errors="surrogatepass")
+        encoding_details["byte_encoding"] = "utf-8-surrogatepass"
     return {
         "stage": "proposal_content",
         "character_length": len(content),
@@ -351,6 +417,7 @@ def _content_details(content: str) -> dict[str, Any]:
         "sha256": hashlib.sha256(encoded).hexdigest(),
         "classification": _classify_text(content),
         "has_markdown_fence": "```" in content,
+        **encoding_details,
     }
 
 
@@ -362,7 +429,7 @@ def _classify_text(content: str) -> str:
         return "fenced_json"
     try:
         json.loads(stripped)
-    except json.JSONDecodeError:
+    except (ValueError, RecursionError):
         return "text"
     return "json"
 

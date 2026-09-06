@@ -54,6 +54,32 @@ sizes, visible gates, semantic assertions, identifier separation and objective
 similarity against the existing public example, and absence of protected-suite
 markers. Neither command performs network requests or model inference.
 
+## API admission checks
+
+The Hermes adapter rejects duplicate object keys, non-finite numbers (including
+float overflow), unpaired Unicode surrogates, and structures deeper than 128
+object/array containers in both the response envelope and proposal content.
+Decoder recursion and integer-conversion limit errors are classified failures.
+Valid Unicode, finite numbers, and complete plain or JSON Markdown fences remain
+supported. Incomplete fences and prose surrounding JSON are rejected.
+
+Malformed JSON proposal syntax uses `proposal.content_non_json`; otherwise
+unsupported or ambiguous JSON values use `proposal.content_invalid`. Invalid
+response envelopes use `response.json_invalid`. Diagnostics contain lengths,
+digests, and classifications, never response values or duplicate key names.
+For a proposal string containing a raw unpaired surrogate, its diagnostic digest
+uses the explicitly labeled `utf-8-surrogatepass` byte encoding; this does not
+make that string admissible.
+
+An adapter failure escalates the run immediately and remains a failed outcome.
+These checks do not introduce retries, establish source authenticity or claim
+truth, or impose a total HTTP response-size limit. Synthetic regressions run
+without contacting a model:
+
+```bash
+PYTHONPATH=src:tests python -m unittest test_hermes_api_strict_json -v
+```
+
 ## Execution phases
 
 Run each model in isolation, starting and ending with zero resident model
