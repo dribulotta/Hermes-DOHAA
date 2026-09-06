@@ -165,9 +165,85 @@ approval workflow. Operators must restrict command execution and ledger write
 access, and should record approver identity in an external authorization
 system until a signed approval record is implemented.
 
+## Quarantined candidate packages
+
+The first persistent-learning primitive stores untrusted candidates outside the
+active runtime. It supports only the `quarantined` state. It never executes an
+artifact, applies a patch, edits a prompt, evaluates evidence or approves a
+promotion. A successful storage or verification report is not an assurance
+verdict about the proposed change.
+
+Create a draft JSON document with exactly these fields:
+
+```json
+{
+  "schema_version": "hermes-learning-draft/1.0",
+  "kind": "regression_test",
+  "baseline_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "artifact": "assert 1 + 1 == 2\n",
+  "rationale": "Reproduce a synthetic arithmetic defect.",
+  "evidence_sha256": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]
+}
+```
+
+The example digests are placeholders. Replace them with SHA-256 digests of the
+actual immutable baseline artifact and the relevant evidence artifacts. A Git
+SHA-1 commit ID is not a baseline SHA-256 digest. The storage step binds the
+supplied digests; an independent evaluator must later resolve their artifacts
+and verify their provenance. Do not expose protected evidence to the generator.
+
+Supported kinds are `code_patch`, `prompt` and `regression_test`; all artifacts
+are inert text. Evidence contains one to 32 distinct lowercase SHA-256 digests.
+Rationales are limited to 8,192 characters, and complete input and stored JSON
+documents are limited to 2 MiB of UTF-8. Unknown fields, duplicate JSON keys,
+unsupported versions and authority claims such as `approved` are rejected.
+
+Use an existing trusted directory outside all active runtime, prompt, plugin
+and policy paths. Restrict directory access so the cognitive runtime cannot
+write candidates or replace files. For example, an operator on Linux can use:
+
+```sh
+mkdir -m 700 /path/to/private-quarantine
+python -m hermes_dohaa.learning.quarantine freeze /path/to/private-draft.json \
+  --output /path/to/private-quarantine/candidate.json
+```
+
+Store the returned `candidate_id` independently, for example in the reviewed
+development issue or an external evidence record, without publishing the
+candidate contents. Verify later using that retained ID:
+
+```sh
+python -m hermes_dohaa.learning.quarantine verify \
+  /path/to/private-quarantine/candidate.json --candidate-id RETAINED_SHA256
+```
+
+The ID commits to the canonical candidate JSON, including its artifact,
+baseline, rationale, ordered evidence list, version and quarantined state.
+Verification requires the external ID; trusting only a digest embedded in a
+rewritten candidate would allow the replacement to authenticate itself.
+Verification is read-only and returns no artifact contents. CLI failures expose
+stable `candidate.*` codes without raw file contents or operating-system errors.
+
+Publication requires POSIX permissions and a local filesystem supporting hard
+links and directory synchronization. A private temporary file is synchronized
+before its final name is atomically claimed; the final file has mode `0600`.
+Existing files and symlinks are never replaced, and concurrent writers cannot
+both claim the same output. Native Windows publication fails before creating a
+file; offline verification and draft validation are portable.
+
+This is application-level immutability. A filesystem owner or administrator
+can still modify or delete files, and a content hash is neither a signature nor
+an authorization system. Independently retained IDs detect replacements;
+trusted directory ownership and backups remain operator responsibilities.
+An abrupt process kill before publication may leave a private `.candidate-*`
+temporary file, which must never be treated as a published candidate. A storage
+error after publication may leave a complete candidate; verify it against the
+retained ID before retrying, and never overwrite it to hide the failure.
+
 ## Candidate lifecycle
 
-A future governed-learning subsystem should implement these states:
+Beyond this initial quarantine primitive, a governed-learning subsystem still
+needs the following lifecycle and transitions:
 
 1. **Observed:** a failure or opportunity is recorded with reproducible
    evidence.
