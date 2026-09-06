@@ -215,6 +215,7 @@ running the cognitive runtime in a separate, restricted trust domain:
 - [Isolated deployment guide](docs/deployment.md)
 - [Operations runbook](docs/operations.md)
 - [Governed learning loop](docs/learning-loop.md)
+- [Contract-owned evidence and factual claim bindings](docs/bound-evidence-policy.md)
 - [Comparative quality evaluation](docs/evaluation.md)
 - [Runtime environment example](deploy/env/runtime.env.example)
 - [Hardened systemd service example](deploy/systemd/hermes-runtime.service.example)

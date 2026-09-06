@@ -1,0 +1,25 @@
+{
+  "result": {
+    "stock": 29
+  },
+  "claims": [
+    {
+      "statement": "Stock is 29.",
+      "evidence_ids": [
+        "source-1"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "source-1",
+      "kind": "artifact",
+      "source": "synthetic-inventory",
+      "content": {
+        "stock": 29
+      },
+      "sha256": "41f1dd2f155608dce1f2f6edb343b4fda94f4485fec0e98dba6d79c9b8c49fbb"
+    }
+  ],
+  "requested_actions": []
+}
