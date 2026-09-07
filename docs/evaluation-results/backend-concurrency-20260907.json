@@ -1,0 +1,71 @@
+{
+  "assessment": "four_not_demonstrated_beneficial",
+  "scope": "Direct LM Studio backend HTTP capacity; no native Hermes agent or DOHAA controller in this workload.",
+  "validity": {
+    "all_34_requests_accounted": true,
+    "same_request_bytes_per_case": true,
+    "request_response_hashes_match": true,
+    "request_parameters_and_prompts_match": true,
+    "all_terminal_complete": true,
+    "model_ids_match": true,
+    "reasoning_disabled": true,
+    "no_tools": true,
+    "parallel4_observed": true,
+    "same_server_configuration": true,
+    "request_timing_valid": true,
+    "no_run_stop": true,
+    "final_unload_verified": true,
+    "frozen_files_unchanged": true,
+    "accuracy_audit_valid_and_unchanged": true
+  },
+  "benefit_criteria": {
+    "all_scored_outputs_correct": false,
+    "no_runtime_failures": true,
+    "no_paired_accuracy_regressions": false,
+    "throughput_gain_over_10percent": false
+  },
+  "groups": [
+    {
+      "concurrency": 1,
+      "planned_requests": 16,
+      "completed": 16,
+      "correct": 4,
+      "failures": 0,
+      "wall_seconds": 150.49019996402785,
+      "requests_per_second": 0.10631921549592287,
+      "correct_requests_per_second": 0.026579803873980717,
+      "mean_latency_seconds": 9.405034590112336,
+      "p95_latency_seconds": 14.04131957096979
+    },
+    {
+      "concurrency": 4,
+      "planned_requests": 16,
+      "completed": 16,
+      "correct": 4,
+      "failures": 0,
+      "wall_seconds": 276.96163578203414,
+      "requests_per_second": 0.057769733901311265,
+      "correct_requests_per_second": 0.014442433475327816,
+      "mean_latency_seconds": 68.58960433274842,
+      "p95_latency_seconds": 72.29509372002212
+    }
+  ],
+  "throughput_ratio_4_over_1": 0.5433611754173132,
+  "paired_accuracy_regressions": 1,
+  "peak_client_requests": {
+    "1": 1,
+    "4": 4
+  },
+  "actual_requests": 34,
+  "elapsed_seconds": 511.1063316310174,
+  "cleanup": {
+    "status": "completed"
+  },
+  "protocol_sha256": "24fb49ac2f7d0812260a472328b220f35f6cd291dd4609ea700adfb05028019e",
+  "limits": [
+    "One installed model and one small synthetic workload; no DOHAA controller or native Hermes agent in the capacity requests.",
+    "No GPU/RAM telemetry or proof of GPU execution overlap; no attribution of slowdown to memory spill.",
+    "Server settings and context stayed fixed; no claim about every context or model.",
+    "Private model responses and operational catalog details are excluded from publication."
+  ]
+}

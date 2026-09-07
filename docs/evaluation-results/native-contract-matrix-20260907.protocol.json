@@ -1,0 +1,90 @@
+{
+  "schema": "native-matched-comparison/2.0",
+  "campaign": "prospective-derivations-20260907",
+  "models": [
+    "qwen3.6-27b-mtp",
+    "qwen/qwen3.6-35b-a3b",
+    "google/gemma-4-26b-a4b-qat"
+  ],
+  "reasoning_modes": [
+    "none",
+    "medium"
+  ],
+  "source_commit": "1b848e9ded18c6a2f05229ed3b259ee379753cc1",
+  "source_tree": "218d3c8f15be484e9c1948e4165b3df8afbeaded",
+  "native_commit": "f4e8eb156876a27687a9bc7db0e1b6343a9c35c0",
+  "model_identity": "LM Studio catalog and response IDs. Model file bytes and quantization are not independently attested.",
+  "case_count": 24,
+  "template_count": 12,
+  "model_mode_trials": 144,
+  "scored_conditions": 432,
+  "concurrency": 1,
+  "conditions": [
+    "direct",
+    "self_reflection",
+    "dohaa"
+  ],
+  "model_blocks": "Fixed listed model order. Cases, mode order and continuation order shuffled with the fixed seed within each contiguous model block.",
+  "shared_initial": "One native initial proposal is reused across all three arms. Reflection and DOHAA receive separate fresh native continuation sessions. Initial admission failures affect all three arms.",
+  "budgets": {
+    "max_actual_model_requests": 432,
+    "max_native_calls_per_condition": 2,
+    "direct_native_calls": 1,
+    "max_new_calls_per_pair": 3,
+    "max_output_tokens_per_request": 8192,
+    "native_run_budget_seconds": 180,
+    "wall_seconds": 28800,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "sampling_seed": 9072703
+  },
+  "calibration": {
+    "requests": 6,
+    "one_per_model_mode": true,
+    "token_cap": 8192,
+    "wall_seconds": 1800,
+    "task": "Compute (211 times 37) minus 59. Return a JSON object with value.",
+    "scored": false,
+    "start_gate": "All six probes complete and parse, requested/response identities match, no tools or violations, reasoning off is empty and reasoning on is observed for each model, cleanup succeeds. Arithmetic correctness is reported but not used for model selection. Failure skips the entire matrix without replacement or retry."
+  },
+  "fairness": "Direct has one generation. Reflection gets two if initial admission succeeds; DOHAA gets at most two and may use deterministic repair. Every generation has the same 8192-token cap. Equal caps are not equal realized compute. Report actual calls and usage.",
+  "oracle": "Frozen references are used only by scorer/preflight. Every task has visible input-derived formulas or a declared source/evidence binding. Same contract is visible to every arm. No hidden expected-result gate or reference feedback.",
+  "deterministic_only_baseline": "Separately measure existing semantic repair from a null skeleton derived only from required result keys. Zero inference; no access to references before scoring. Report 18 formula cases and 6 bound-source cases separately. This baseline cannot construct bound evidence/claims.",
+  "scoring_numbers": "Finite equal integer/float values compare equal; booleans are distinct. Exact canonical claim/evidence membership ignoring list order. No requested actions. DOHAA success additionally requires controller acceptance.",
+  "native_policy": "Fresh restricted native Hermes agents, tools/memory/user profile/MCP/title generation/background review disabled. One actual generation request per native call. Block the max-iteration summary at the native hook before construction. Independently validate every actual wire request and deny transport retries or changed parameters. Same-model same-origin read-only POST /api/show is allowed and counted separately.",
+  "budget_stop_policy": "A denied native summary or matching retry after the single generation is recorded as generation_budget_exhausted and remains a failed outcome. Such a correctly prevented extra generation does not itself invalidate measurement. Changed request parameters, destination, tools or unowned requests are protocol violations and halt the campaign. All denials and failures are counted. No reinterpretation of the earlier r4 audit is allowed.",
+  "memory_policy": "Complete all requests for a model, synchronously unload its exact loaded instance IDs, verify absence and an empty LLM catalog, then start the next model. Repeat at final cleanup. Do not unload foreign models. Unknown server completion after client timeout halts without claiming safe unload. No GPU/system-RAM telemetry or proof of full GPU residency is claimed.",
+  "error_policy": "Keep all 144 planned trials in denominator, including failed or unrun cases. No retry, best-of selection, model substitution, rerun after seeing scores or early stopping for favorable results. Protocol/safety/global wall failures halt; audit once and report invalid/incomplete.",
+  "primary_utility_criterion": {
+    "comparison": "dohaa_vs_self_reflection",
+    "minimum_mean_accuracy_gain": 0.05,
+    "no_negative_model_mode_cell": true,
+    "minimum_models_with_positive_gain": 2
+  },
+  "reliability_criteria": {
+    "zero_dohaa_incorrect_accepted": true,
+    "zero_dohaa_actions_accepted": true,
+    "zero_dohaa_runtime_failures": true,
+    "all_ledgers_valid": true
+  },
+  "validity_criteria": [
+    "all_144_trials_saved",
+    "source_and_manifest_match",
+    "independent_scores_agree",
+    "wire_response_hashes_match",
+    "wire_parameters_and_request_counts_match",
+    "model_ids_match",
+    "reasoning_modes_observed",
+    "no_tools",
+    "all_agents_restricted",
+    "no_protocol_violations",
+    "no_global_budget_or_safety_stop",
+    "all_denied_generations_remain_failed",
+    "complete_terminal_responses",
+    "synchronous_unload_order_verified"
+  ],
+  "conclusion_policy": "supported_in_this_matrix only when validity, utility and reliability all pass. Otherwise not_supported_in_this_matrix or invalid_or_incomplete. Small authored synthetic diagnostic with visible formulas, not population-level superiority, general truth verification, persistent learning or real actuation.",
+  "statistics": "Report paired wins/losses and all six cell counts. Two variants per template and reused initial proposals are dependent observations; 432 condition outcomes are not 432 independent samples.",
+  "previous_campaign": "Original r4 files/results/invalid audit remain immutable. New synthetic values, explicit coverage, different seed and larger common token cap make this a new diagnostic, not a comparable rescore.",
+  "load_test": "Concurrency remains 1. A separately frozen 1-vs-4 workload may follow only a valid accuracy audit and verified empty catalog; it is excluded from these scores."
+}
