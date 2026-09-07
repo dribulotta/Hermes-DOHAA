@@ -7,11 +7,13 @@ before calls, preserves responses/failures, and derives paired observations
 through strict response admission. The existing shadow scorer supplies the
 unchanged predeclared verdict.
 
-This library does **not** yet include a production native-Hermes adapter. The
-private experimental collector used for the completed pilots remains separate.
-Before real model use, integrate and audit that adapter's wire observations,
-isolated profiles, request budgets, terminal-completion detection and model
-lifecycle. The existing `HermesApiRuntime` does not implement this interface.
+An optional [isolated native-Hermes adapter](native-shadow-adapter.md) implements
+this interface for development and has an installed-agent loopback conformance
+tool. A [four-call live-provider canary](native-shadow-live-canary-20260907.md)
+passed integration checks with one retained response-format failure. Deployment
+readiness remains unestablished.
+The private experimental collector used for the completed pilots stays separate;
+the existing `HermesApiRuntime` does not implement this interface.
 
 ## Preparation and invocation
 
@@ -159,5 +161,5 @@ directory to detect removal or replacement.
 Revocation withdraws a development recommendation. It is not a runtime rollback:
 this subsystem has no live activation path, and recommendations grant no
 deployment permission. Removing this optional library leaves retained evidence
-and the running runtime untouched. Native-adapter integration, authenticated
-review, controlled adoption and deployment rollback remain separate work.
+and the running runtime untouched. Live-provider validation, authenticated review,
+controlled adoption and deployment rollback remain separate work.
