@@ -45,3 +45,5 @@ The earlier r4 campaign retains its invalid verdict and 17 incorrect DOHAA accep
 Persistent learning, learned-candidate activation, shadow execution, automatic rollback and real actuators remain unproven/incomplete. This report neither publishes V5 nor authorizes deployment.
 
 [Machine-readable aggregate](native-contract-matrix-20260907.json) · [Frozen protocol](native-contract-matrix-20260907.protocol.json)
+
+The separate backend capacity diagnostic completed after this matrix: concurrency 4 produced 0.543 times serial throughput and did not improve aggregate accuracy. See the [capacity report](backend-concurrency-20260907.md); it does not change the native accuracy verdict.
