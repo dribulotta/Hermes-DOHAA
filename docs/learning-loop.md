@@ -167,6 +167,11 @@ system until a signed approval record is implemented.
 
 ## Quarantined candidate packages
 
+An optional [bounded training prompt proposer](training-prompt-proposals.md)
+can record one proposal from explicitly authorized training observations and
+store a candidate bound to its exact inputs and terminal response. It neither
+establishes training provenance nor evaluates, adopts or activates the result.
+
 The first persistent-learning primitive stores untrusted candidates outside the
 active runtime. It supports only the `quarantined` state. It never executes an
 artifact, applies a patch, edits a prompt, evaluates evidence or approves a
