@@ -1,5 +1,10 @@
 # Paired prompt collection and development review
 
+An optional [development selection store](development-prompt-selection.md) can
+consume a positive audited collection and current recommendation to retain a
+prompt choice in a separate dev workspace, then revert it to the exact baseline.
+It does not alter runtime profiles or grant activation authority.
+
 `hermes_dohaa.learning.collection` supplies a serial prompt collector and an
 independent, read-only recording auditor. It invokes an operator-owned adapter
 with the verified baseline and quarantined prompt candidate, persists dispatches
