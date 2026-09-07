@@ -88,3 +88,29 @@ No production promotion, automatic live rollback, actuator or deployment is
 implemented here. Any new real study must declare its aim, candidate, cases,
 budgets and success criteria before generation; existing studies are not rerun
 or rescored to obtain a favorable verdict.
+
+## Installed-native workflow conformance
+
+`tools/check_native_development_workflow.py` exercises a new complete workflow
+with the installed Hermes `AIAgent` and a dedicated loopback fixture provider.
+It requires explicit `--source-commit`, `--native-source`, `--native-commit`,
+`--python`, `--worker-uid`, `--worker-gid` and a new private `--output` directory.
+Run only on an isolated POSIX development host with a privileged launcher,
+trusted source/interpreter/dependencies and an otherwise idle reserved worker
+identity. It never reads active profiles or credentials, or contacts LM Studio.
+
+The tool writes its source/case/policy commitments and budget before starting
+the fixture server: four simulated paired-collection generations, one native
+consumer of the adopted selection and one consumer of the restored baseline.
+All six use fresh restricted workers. Two intervening revocation reads must fail
+before adapter startup or generation. The positive collection outcome is a
+fixture expectation, not evidence of LLM learning.
+
+The final checks compare private server captures with native request/response
+captures and the exact logical requests. They verify the selected/restored
+prompt bytes, collection reconstruction, review/state preservation, account
+isolation, sealed profiles, single generation per worker, and exact simulated
+instance unload after each of the three blocks. Summaries omit raw captures;
+private evidence stays in the new output directory. Protocol hashes document
+consistency under a trusted installation, not cryptographic execution/timing
+attestation. Do not rerun a closed study or repair its verdict to get a PASS.
