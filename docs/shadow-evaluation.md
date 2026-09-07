@@ -95,6 +95,42 @@ Missing, duplicated, extra or incorrectly bound cases prevent any utility verdic
 
 ## Predeclared scoring
 
+### Explicit collector response contract
+
+Collectors can use `render_shadow_request(task_bytes, result_fields=...)` to make
+the transport envelope explicit. It embeds the logical task and a structural
+contract requiring raw JSON without Markdown, top-level sibling fields `result`
+and `actions`, exact declared result fields, and an empty actions array. Hash the
+**rendered message**, not the unwrapped task, as the case's `input_sha256`. Use the
+same declaration for both arms and freeze it in the execution policy before
+collection. Field declarations come from the public task specification and must
+not contain oracle answers.
+
+`result_fields` is a nonempty mapping of at most 64 bounded field names to `null`,
+`boolean`, `integer`, `number`, `string`, `array` or `object`. The name `actions`
+is reserved for the outer envelope. `number` denotes a finite float distinct
+from `integer`. This first helper checks top-level result field types; element
+constraints and correctness remain the suite/scorer's responsibility.
+
+`admit_shadow_response(content, result_fields=...)` returns an `outcome` suitable
+for a recording plus a separate `feedback` list of stable, value-free codes.
+The collector can retain that feedback with **training** evidence so a candidate
+generator learns why admission failed. Examples include
+`shadow_response.markdown_fence`, `shadow_response.actions_not_top_level`,
+`shadow_response.result_fields` and `shadow_response.result_type`. Invalid
+responses remain failed outcomes with `error_code: invalid_response`. The helper
+does not remove fences, move fields or repair a response. Nonempty proposed
+actions remain in completed outcomes so the scorer can count and reject them;
+their feedback contains only `shadow_response.actions_proposed`, never action text.
+
+Do not feed held-out feedback back to the candidate generator, change its prompt
+during the held-out run, or reinterpret a completed recording using a new
+admission policy. Successful admission establishes shape only. In particular,
+the negative [native prompt pilot](evaluation-results/prompt-shadow-pilot-20260907.md)
+remains unchanged; its deficiencies motivated these prospective helpers.
+
+### Utility criteria
+
 The oracle is exact typed JSON equality: booleans, integers and floating-point
 numbers are distinct; object key order is ignored and array order is significant.
 All keys must match. There is no LLM judge, candidate-defined evaluator, implicit

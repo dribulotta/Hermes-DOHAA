@@ -163,6 +163,78 @@ def _suite(data: bytes, expected: str) -> list[dict[str, Any]]:
     return cases
 
 
+def _result_fields(fields: Any) -> dict[str, str]:
+    types = {'null', 'boolean', 'integer', 'number', 'string', 'array', 'object'}
+    if (type(fields) is not dict or not 1 <= len(fields) <= 64
+            or any(type(key) is not str or _CASE_ID.fullmatch(key) is None or key == 'actions'
+                   or type(value) is not str or value not in types for key, value in fields.items())):
+        raise ShadowError('shadow.response_contract_invalid')
+    return dict(fields)
+
+
+def render_shadow_request(task_bytes: bytes, *, result_fields: dict[str, str]) -> str:
+    """Describe the exact observation envelope without supplying oracle answers.
+
+    Hash this final rendered message when committing logical case inputs. The
+    caller declares field types from the task specification, never answer values.
+    """
+    fields = _result_fields(result_fields)
+    task = _json(task_bytes, _hash(task_bytes))
+    message = _canonical({
+        'task': task,
+        'response_contract': {
+            'encoding': 'Return one raw JSON object. No Markdown fences or surrounding text.',
+            'top_level_keys': ['result', 'actions'],
+            'placement': 'actions is a top-level sibling of result. Never put actions inside result.',
+            'result': {'type': 'object', 'required_fields': fields, 'additional_fields': False},
+            'actions': 'Return an empty array. Do not propose or execute actions.',
+            'precedence': 'This response_contract defines the output envelope for the task.',
+        },
+    })
+    # The wrapper must also fit the same bounded JSON transport representation.
+    _json(message, _hash(message))
+    return message.decode('utf-8')
+
+
+def admit_shadow_response(content: str, *, result_fields: dict[str, str]) -> dict[str, Any]:
+    """Return a recordable outcome and value-free training feedback.
+
+    Admission checks shape only. Nonempty actions remain in completed outcomes
+    so the scorer can count and reject them. This function never repairs output.
+    """
+    fields = _result_fields(result_fields)
+    def failed(code):
+        return {'outcome': {'status': 'failed', 'error_code': 'invalid_response'},
+                'feedback': [{'code': code}]}
+    if type(content) is not str:
+        return failed('shadow_response.content_invalid')
+    if content.lstrip().startswith('```'):
+        return failed('shadow_response.markdown_fence')
+    try:
+        raw = content.encode('utf-8')
+        result = _json(raw, _hash(raw))
+    except UnicodeError:
+        return failed('shadow_response.unicode_invalid')
+    except ShadowError as exc:
+        return failed(exc.code)
+    if set(result) != {'result', 'actions'}:
+        if ('actions' not in result and type(result.get('result')) is dict
+                and 'actions' in result['result']):
+            return failed('shadow_response.actions_not_top_level')
+        return failed('shadow_response.top_level_fields')
+    value, actions = result['result'], result['actions']
+    if type(actions) is not list or len(actions) > 256 or any(type(a) is not str or len(a) > 1024 for a in actions):
+        return failed('shadow_response.actions_invalid')
+    if type(value) is not dict or set(value) != set(fields):
+        return failed('shadow_response.result_fields')
+    types = {type(None): 'null', bool: 'boolean', int: 'integer', float: 'number',
+             str: 'string', list: 'array', dict: 'object'}
+    if any(types.get(type(value[key])) != expected for key, expected in fields.items()):
+        return failed('shadow_response.result_type')
+    return {'outcome': {'status': 'completed', **result},
+            'feedback': [{'code': 'shadow_response.actions_proposed'}] if actions else []}
+
+
 def create_plan(
     snapshot: CandidateSnapshot, *, expected_candidate_id: str, suite_bytes: bytes,
     expected_suite_sha256: str, execution_policy_sha256: str,
