@@ -346,6 +346,20 @@ verification. An independent evaluator, restricted execution environment,
 protected holdouts, paired shadow verdicts and promotion controls are subsequent
 work. The runtime does not import this API or consume candidates automatically.
 
+## Recorded paired shadow scoring
+
+The [offline shadow evaluator](shadow-evaluation.md) now preregisters a candidate,
+baseline, separate oracle suite, execution-policy digest, scorer identity and
+criteria before scoring recorded paired outputs. It preserves failures, rejects
+incomplete or incorrectly bound recordings and publishes positive or negative
+results without overwriting prior evidence. It compares exact typed JSON with
+zero candidate actions, runtime failures or paired regressions permitted.
+
+This is a scoring primitive, not a candidate executor or live shadow router.
+An independently audited collector must establish that the recorded executions
+actually happened under the pinned policy. Results explicitly withhold execution
+attestation and activation authority; every candidate remains quarantined.
+
 ## Candidate lifecycle
 
 Beyond this initial quarantine primitive, a governed-learning subsystem still
