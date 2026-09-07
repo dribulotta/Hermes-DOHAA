@@ -1,5 +1,10 @@
 # Recorded paired shadow evaluation
 
+The optional [prompt collector and development review](shadow-collection.md)
+provide serial adapter invocations, private execution records, independent
+recording reconstruction and revocable development recommendations. Native
+Hermes adapter integration remains separate; the scorer's authority is unchanged.
+
 The offline evaluator compares a quarantined candidate with its baseline using
 a separately controlled oracle and predeclared criteria. It scores **recorded
 outputs**, not candidate-supplied grades. It never executes candidate code,
