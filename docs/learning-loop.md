@@ -289,8 +289,62 @@ assumptions. It does not establish provenance, truth of evidence, a test verdict
 approver identity or permission to activate the candidate. Metadata comparisons
 detect observed races but do not create an atomic filesystem snapshot or prevent
 later writes. An evaluator must reverify the artifacts it actually consumes,
-or use a separately enforced immutable snapshot. Only authorized independent
+or consume the verified in-memory bytes described below. Only authorized independent
 evaluators may handle protected artifacts; do not expose them to the generator.
+
+## Consume the verified bytes
+
+An integrity report is metadata, not a durable handle to verified contents.
+Opening the reported paths again would allow an intervening write to replace
+what an evaluator consumes. Independent offline consumers can instead call
+`load_artifact_snapshot` in `hermes_dohaa.learning.artifacts`:
+
+```python
+from hermes_dohaa.learning.artifacts import load_artifact_snapshot
+
+snapshot = load_artifact_snapshot(
+    candidate_path,
+    expected_id=independently_retained_candidate_id,
+    artifact_dir=operator_controlled_artifact_directory,
+)
+# Pass these bytes only to the separately authorized independent evaluator.
+baseline_bytes = snapshot.baseline.content
+evidence_bytes = tuple(item.content for item in snapshot.evidence)
+candidate = snapshot.candidate
+private_integrity_metadata = snapshot.report()
+```
+
+This API hashes and retains the same stream during a single read of each unique
+artifact. It applies the checker's identity, POSIX file-type, mutation and byte
+budget checks before returning any snapshot. The candidate is the immutable
+payload checked against the externally retained ID. Baseline and evidence are
+immutable `bytes`, with ordered evidence references stored in a tuple; a shared
+digest uses the same retained object in both roles. No descriptors remain open
+after the call. Later replacement or deletion of source files cannot change
+these retained bytes. A later invocation checks the sources again and can fail.
+Observed changes during reference capture still fail closed. This is not an
+atomic filesystem snapshot: it commits to the individually verified contents,
+not to every file having coexisted unchanged at a single instant.
+
+Consumers must use the returned bytes and candidate, without reopening source
+paths. Do not treat a previously emitted report as permission to reload content.
+The existing CLI remains a streaming metadata-only checker. The new API retains
+up to 256 MiB of unique artifacts plus the candidate, with transient buffering
+of up to another 64 MiB while joining a file's chunks and Python object overhead.
+These are content limits, not an operating-system RSS limit; an external process
+boundary must enforce any evaluation memory budget. Do not serialize this private
+snapshot into public reports, logs or generator prompts. Its default representation
+and `hermes-candidate-snapshot/1.0` report omit candidate and artifact contents;
+explicit access to the data necessarily exposes those bytes to the caller.
+
+All three candidate kinds remain inert text and stay `quarantined`. A returned
+object, its type or its report does not establish provenance, authorize code
+execution, isolate an evaluator, prove learning, grant access to protected tests,
+or permit promotion. Public data classes can be constructed by callers; they
+are not attestations or trust tokens. Only this loader performs the stated
+verification. An independent evaluator, restricted execution environment,
+protected holdouts, paired shadow verdicts and promotion controls are subsequent
+work. The runtime does not import this API or consume candidates automatically.
 
 ## Candidate lifecycle
 

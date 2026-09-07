@@ -8,10 +8,11 @@ import hashlib
 import json
 import os
 import stat
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
-from hermes_dohaa.learning.quarantine import CandidateError, read_candidate
+from hermes_dohaa.learning.quarantine import Candidate, CandidateError, read_candidate
 
 
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
@@ -35,12 +36,21 @@ def _signature(info: os.stat_result) -> tuple[int, ...]:
 
 
 def _hash_regular_fd(fd: int, expected: str, maximum: int) -> tuple[int, tuple[int, ...]]:
+    size, signature, _ = _read_regular_fd(fd, expected, maximum, retain=False)
+    return size, signature
+
+
+def _read_regular_fd(
+    fd: int, expected: str, maximum: int, *, retain: bool,
+) -> tuple[int, tuple[int, ...], bytes]:
+    """Hash the same bounded stream that is optionally retained for a consumer."""
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode):
         raise ArtifactError('artifacts.unsafe_file')
     if before.st_size > maximum:
         raise ArtifactError('artifacts.limit_exceeded')
     hashed = hashlib.sha256()
+    chunks: list[bytes] | None = [] if retain else None
     size = 0
     while True:
         chunk = os.read(fd, min(_CHUNK_BYTES, maximum - size + 1))
@@ -50,12 +60,51 @@ def _hash_regular_fd(fd: int, expected: str, maximum: int) -> tuple[int, tuple[i
         if size > maximum:
             raise ArtifactError('artifacts.limit_exceeded')
         hashed.update(chunk)
+        if chunks is not None:
+            chunks.append(chunk)
     after = os.fstat(fd)
     if _signature(before) != _signature(after) or size != before.st_size:
         raise ArtifactError('artifacts.changed')
     if hashed.hexdigest() != expected:
         raise ArtifactError('artifacts.digest_mismatch')
-    return size, _signature(after)
+    return size, _signature(after), b''.join(chunks) if chunks is not None else b''
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactBytes:
+    """Immutable artifact bytes; the object itself conveys no authority."""
+
+    sha256: str
+    content: bytes = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateSnapshot:
+    """Private, in-memory inputs for an independent offline consumer.
+
+    Only load_artifact_snapshot verifies inputs. This public data type is not a
+    trust token, provenance attestation, sandbox, or approval to execute code.
+    """
+
+    candidate: Candidate = field(repr=False)
+    baseline: ArtifactBytes
+    evidence: tuple[ArtifactBytes, ...]
+
+    def report(self) -> dict[str, Any]:
+        """Return independent metadata without paths or retained contents."""
+        references = [('baseline', self.baseline)]
+        references.extend(('evidence', item) for item in self.evidence)
+        unique = {item.sha256: item for _, item in references}
+        return {
+            'schema_version': 'hermes-candidate-snapshot/1.0',
+            'status': 'passed', 'scope': _SCOPE,
+            'candidate_id': self.candidate.candidate_id,
+            'candidate_state': 'quarantined',
+            'unique_artifacts': len(unique),
+            'total_bytes': sum(len(item.content) for item in unique.values()),
+            'references': [{'role': role, 'sha256': item.sha256,
+                            'size_bytes': len(item.content)} for role, item in references],
+        }
 
 
 def verify_artifacts(
@@ -67,6 +116,36 @@ def verify_artifacts(
     anchors lookups; validated SHA-256 strings are the only relative file names.
     This is not an atomic filesystem snapshot or an authorization certificate.
     """
+    _, report, _ = _inspect_artifacts(
+        candidate_path, expected_id=expected_id, artifact_dir=artifact_dir, retain=False,
+    )
+    return report
+
+
+def load_artifact_snapshot(
+    candidate_path: str | Path, *, expected_id: str, artifact_dir: str | Path,
+) -> CandidateSnapshot:
+    """Retain exactly the verified bytes without reopening their paths.
+
+    The caller must pin expected_id independently and control directory ancestry.
+    No partial result is returned on failure. After success consumers must use
+    the returned bytes, not reopen the source files or send them to a generator.
+    The candidate stays quarantined; no artifact is parsed, executed or promoted.
+    """
+    candidate, _, retained = _inspect_artifacts(
+        candidate_path, expected_id=expected_id, artifact_dir=artifact_dir, retain=True,
+    )
+    payload = candidate.to_dict()['candidate']
+    return CandidateSnapshot(
+        candidate=candidate,
+        baseline=retained[payload['baseline_sha256']],
+        evidence=tuple(retained[value] for value in payload['evidence_sha256']),
+    )
+
+
+def _inspect_artifacts(
+    candidate_path: str | Path, *, expected_id: str, artifact_dir: str | Path, retain: bool,
+) -> tuple[Candidate, dict[str, Any], dict[str, ArtifactBytes]]:
     if os.name != 'posix' or any(not hasattr(os, flag) for flag in (
         'O_NOFOLLOW', 'O_DIRECTORY', 'O_NONBLOCK', 'O_CLOEXEC',
     )):
@@ -80,6 +159,7 @@ def verify_artifacts(
     except OSError as exc:
         raise ArtifactError('artifacts.directory_invalid') from exc
     checked: dict[str, tuple[int, tuple[int, ...]]] = {}
+    retained: dict[str, ArtifactBytes] = {}
     total = 0
     try:
         for _, expected in references:
@@ -95,14 +175,20 @@ def verify_artifacts(
                         else 'artifacts.io_error')
                 raise ArtifactError(code) from exc
             try:
-                size, signature = _hash_regular_fd(fd, expected, min(MAX_ARTIFACT_BYTES, MAX_TOTAL_BYTES - total))
+                maximum = min(MAX_ARTIFACT_BYTES, MAX_TOTAL_BYTES - total)
+                if retain:
+                    size, signature, content = _read_regular_fd(fd, expected, maximum, retain=True)
+                    retained[expected] = ArtifactBytes(expected, content)
+                else:
+                    size, signature = _hash_regular_fd(fd, expected, maximum)
             finally:
                 os.close(fd)
             total += size
             checked[expected] = (size, signature)
 
         # Catch entry replacement, including changes to an early file while
-        # later references were being read. Subsequent users must reverify.
+        # later references were being read. Metadata-only users must reverify;
+        # snapshot consumers use the retained bytes instead of reopening paths.
         for expected, (_, signature) in checked.items():
             try:
                 current = os.stat(expected, dir_fd=directory_fd, follow_symlinks=False)
@@ -112,13 +198,14 @@ def verify_artifacts(
                 raise ArtifactError('artifacts.changed')
     finally:
         os.close(directory_fd)
-    return {
+    report = {
         'schema_version': _SCHEMA, 'status': 'passed', 'scope': _SCOPE,
         'candidate_id': candidate.candidate_id, 'candidate_state': 'quarantined',
         'unique_artifacts': len(checked), 'total_bytes': total,
         'references': [{'role': role, 'sha256': expected, 'size_bytes': checked[expected][0]}
                        for role, expected in references],
     }
+    return candidate, report, retained
 
 
 def main(argv: Sequence[str] | None = None) -> int:
