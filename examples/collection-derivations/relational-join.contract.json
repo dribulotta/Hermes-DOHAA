@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "derived-relational-join",
+  "objective": "Join active orders to unit prices by literal code and sum quantity times price. Return no claims, evidence or actions.",
+  "inputs": {
+    "policy": {
+      "cancelled": false
+    },
+    "prices": {
+      "K": 12,
+      "M": 17,
+      "N": 9
+    },
+    "orders": [
+      {
+        "code": "K",
+        "qty": 4,
+        "cancelled": false
+      },
+      {
+        "code": "M",
+        "qty": 3,
+        "cancelled": false
+      },
+      {
+        "code": "K",
+        "qty": 5,
+        "cancelled": true
+      },
+      {
+        "code": "N",
+        "qty": 2,
+        "cancelled": false
+      }
+    ],
+    "result_spec": {
+      "required_keys": [
+        "total"
+      ],
+      "additional_keys": false,
+      "types": {
+        "total": "integer"
+      }
+    },
+    "semantic_assertions": [
+      {
+        "assertion_id": "relational-join.total",
+        "operator": "equals",
+        "left": {
+          "op": "ref",
+          "source": "result",
+          "pointer": "/total"
+        },
+        "right": {
+          "op": "dot_product",
+          "args": [
+            {
+              "op": "project",
+              "args": [
+                {
+                  "op": "filter",
+                  "args": [
+                    {
+                      "op": "ref",
+                      "source": "inputs",
+                      "pointer": "/orders"
+                    },
+                    {
+                      "op": "ref",
+                      "source": "inputs",
+                      "pointer": "/policy/cancelled"
+                    }
+                  ],
+                  "pointer": "/cancelled",
+                  "comparator": "equals"
+                }
+              ],
+              "pointer": "/qty"
+            },
+            {
+              "op": "lookup_many",
+              "args": [
+                {
+                  "op": "ref",
+                  "source": "inputs",
+                  "pointer": "/prices"
+                },
+                {
+                  "op": "project",
+                  "args": [
+                    {
+                      "op": "filter",
+                      "args": [
+                        {
+                          "op": "ref",
+                          "source": "inputs",
+                          "pointer": "/orders"
+                        },
+                        {
+                          "op": "ref",
+                          "source": "inputs",
+                          "pointer": "/policy/cancelled"
+                        }
+                      ],
+                      "pointer": "/cancelled",
+                      "comparator": "equals"
+                    }
+                  ],
+                  "pointer": "/code"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "criterion_id": "derived-values",
+      "description": "Every result field must satisfy its visible input-derived formula.",
+      "required_evidence": []
+    }
+  ],
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "shell.execute",
+    "external.publish"
+  ],
+  "risk_level": "low",
+  "max_attempts": 2,
+  "requires_human_approval": false
+}
