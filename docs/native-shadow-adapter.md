@@ -168,5 +168,7 @@ Hermes or contacting any provider.
 All collection reports still say `execution_attested: false` and
 `activation_authorized: false`. Transport consistency and trusted-process
 observations are not cryptographic server attestation, scientific proof of
-learning or authorization to deploy. Live-provider conformance and controlled
-development adoption/reversal remain subsequent work.
+learning or authorization to deploy. A subsequent bounded
+[live-provider canary](native-shadow-live-canary-20260907.md) passed 17 integration
+checks with four real generations, but its response criterion failed at 3/4
+correct. Controlled development adoption/reversal remains subsequent work.

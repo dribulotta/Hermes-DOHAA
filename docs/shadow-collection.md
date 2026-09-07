@@ -9,7 +9,9 @@ unchanged predeclared verdict.
 
 An optional [isolated native-Hermes adapter](native-shadow-adapter.md) implements
 this interface for development and has an installed-agent loopback conformance
-tool. Live-provider compatibility and deployment readiness remain unestablished.
+tool. A [four-call live-provider canary](native-shadow-live-canary-20260907.md)
+passed integration checks with one retained response-format failure. Deployment
+readiness remains unestablished.
 The private experimental collector used for the completed pilots stays separate;
 the existing `HermesApiRuntime` does not implement this interface.
 
