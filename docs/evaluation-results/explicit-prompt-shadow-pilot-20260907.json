@@ -1,0 +1,32 @@
+{
+  "schema_version": "hermes-public-explicit-prompt-pilot/1.0",
+  "model": "qwen3.6-27b-mtp",
+  "reasoning_effort": "none",
+  "generation_seed": 9074007,
+  "training_seed": 9074008,
+  "heldout_seed": 9074009,
+  "training_cases": 4,
+  "candidate_generations": 1,
+  "heldout_pairs": 12,
+  "actual_model_requests": 29,
+  "elapsed_native_seconds": 154.26,
+  "recording_audit_checks_passed": 25,
+  "recording_audit_checks_total": 25,
+  "baseline": {"admitted": 12, "correct": 0, "failures": 0, "proposed_actions": 0},
+  "candidate": {"admitted": 12, "correct": 0, "failures": 0, "proposed_actions": 0},
+  "paired_improvements": 0,
+  "paired_regressions": 0,
+  "verdict": "does_not_meet_predeclared_criteria",
+  "posthoc_field_matches": {
+    "baseline": {"net_cents": 0, "included_count": 7, "included_ids": 8},
+    "candidate": {"net_cents": 0, "included_count": 12, "included_ids": 12}
+  },
+  "posthoc_components_change_verdict": false,
+  "model_unload_verified_after_each_phase": true,
+  "persistent_learning_demonstrated": false,
+  "full_dohaa_controller_with_deterministic_repair_evaluated": false,
+  "live_activation": false,
+  "prior_candidate_or_cases_reused": false,
+  "completed_outcomes_rescored": false,
+  "private_responses_or_oracle_answers_included": false
+}

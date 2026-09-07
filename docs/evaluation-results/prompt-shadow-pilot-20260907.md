@@ -60,3 +60,7 @@ zero-inference fixture failure was preserved and corrected before launch; the
 final 21 harness tests and five actual-AIAgent synthetic-transport checks passed.
 The candidate prompt, raw responses, task instances and oracle answers remain
 private. Aggregate results are retained in the adjacent JSON record.
+
+A [subsequent separately preregistered pilot](explicit-prompt-shadow-pilot-20260907.md)
+used a new candidate and new cases with the explicit response contract. Its
+outcomes are reported separately and do not replace this result.
