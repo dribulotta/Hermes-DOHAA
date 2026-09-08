@@ -165,7 +165,7 @@ class WireResponseTests(unittest.TestCase):
                 n.parse_wire_response(encode(raw), 'synthetic-unit-model')
 
     def test_duplicate_keys_nonfinite_unicode_oversize_and_unexpected_finish_rejected(self):
-        for data in (b'{"model":"a","model":"b"}', b'{"x":NaN}', b'\xff', b'x' * (n.MAX_WIRE+1),
+        for data in (b'{"model":"a","model":"b"}', b'{"x":NaN}', b'\xff', b'x' * (n.MAX_RESPONSE_WIRE+1),
                      encode(response(finish='tool_calls'))):
             with self.assertRaises((n.NativePromptError, shadow.ShadowError)):
                 n.parse_wire_response(data, 'synthetic-unit-model')

@@ -7,8 +7,9 @@ request size, decoded response bytes observed and bytes retained. These counts
 describe chunks delivered by the HTTP client, not the number of network bytes
 received by the server. Raw exception messages, URLs and headers are excluded.
 
-The existing private `wire_response_base64` field retains at most 512 KiB,
-including a prefix when the next chunk exceeds the limit. The limit is unchanged;
+The private `wire_response_base64` field retains at most 4 MiB of decoded response,
+including a prefix when the next chunk exceeds the limit. Requests and metadata
+remain limited to 512 KiB. See [stream capacity](native-stream-capacity.md);
 partial evidence is never accepted as a terminal receipt. No response is invented
 when the send fails or the client has not yielded any bytes. A worker killed before
 writing its trace can still have no such diagnostic; the parent reports its own

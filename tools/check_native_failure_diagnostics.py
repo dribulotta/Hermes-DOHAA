@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Six new loopback failure fixtures through installed native AIAgent; no LLM."""
+"""Seven bounded stream fixtures through installed native AIAgent; no LLM."""
 import argparse
 import base64
 import json
@@ -15,11 +15,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from hermes_dohaa.learning import collection, shadow
-from hermes_dohaa.learning.native_prompt import MAX_WIRE, NativePromptError, validate_wire_request
+from hermes_dohaa.learning.native_prompt import (MAX_RESPONSE_WIRE, NativePromptAdapter, NativePromptError,
+                                                native_adapter_sha256, parse_wire_response, validate_wire_request)
 from check_native_shadow_adapter import Handler as BaseHandler, build_adapter
 from check_native_development_workflow import idle_identity
 
-SCENARIOS = ('complete', 'read-error', 'oversized', 'invalid-json', 'incomplete-sse', 'http-status')
+SCENARIOS = ('complete', 'long-reasoning', 'read-error', 'oversized', 'invalid-json', 'incomplete-sse', 'http-status')
 EXPECTED = {'read-error': ('transport_error', 'read'), 'oversized': ('wire_limit', 'read'),
             'invalid-json': ('response_invalid', 'parse'),
             'incomplete-sse': ('response_incomplete', 'parse'), 'http-status': ('http_status', 'http_status')}
@@ -37,8 +38,15 @@ class Handler(BaseHandler):
         if self.path != '/v1/chat/completions':
             return super().reply(value, status, content_type)
         mode = self.server.scenario
+        if mode == 'long-reasoning':
+            chunk = {'id': 'chatcmpl-' + 's' * 220, 'created': 1, 'model': self.server.model,
+                'object': 'chat.completion.chunk', 'choices': [{'index': 0,
+                    'delta': {'reasoning_content': 'r'}, 'finish_reason': None}]}
+            data = (b'data: ' + shadow._canonical(chunk) + b'\n\n') * 8000 + value
+            assert 512 * 1024 < len(data) < MAX_RESPONSE_WIRE
+            return BaseHandler.reply(self, data, 200, 'text/event-stream')
         if mode == 'oversized':
-            return BaseHandler.reply(self, b'x' * (MAX_WIRE + 37), 200)
+            return BaseHandler.reply(self, b'x' * (MAX_RESPONSE_WIRE + 37), 200)
         if mode == 'invalid-json':
             return BaseHandler.reply(self, b'not a JSON document', 200)
         if mode == 'http-status':
@@ -82,7 +90,7 @@ def main():
     protocol = {'scope': 'new-native-failure-loopback-fixtures', 'source_commit': args.source_commit,
         'source_tree': git(ROOT, 'rev-parse', 'HEAD^{tree}'), 'native_commit': args.native_commit,
         'driver_sha256': shadow._hash(Path(__file__).read_bytes()), 'scenarios': list(SCENARIOS),
-        'expected_failures': EXPECTED, 'max_simulated_generations': 6, 'real_model_requests': 0,
+        'expected_failures': EXPECTED, 'max_simulated_generations': len(SCENARIOS), 'real_model_requests': 0,
         'client_concurrency': 1, 'retries': 0, 'learning_study': False}
     shadow._publish(args.output / 'protocol.json', shadow._canonical(protocol))
     report = {'schema_version': 'hermes-native-failure-conformance/1.0', 'status': 'failed',
@@ -103,6 +111,14 @@ def main():
             thread.start()
             try:
                 adapter, cp = build_adapter(args, server, folder)
+                if mode == 'long-reasoning':
+                    policy = dict(adapter.policy, max_tokens=8192, reasoning_effort='medium')
+                    raw = shadow._canonical(policy)
+                    cp = shadow._canonical(collection.create_collection_policy(adapter_sha256=native_adapter_sha256(),
+                        runtime_policy_sha256=shadow._hash(raw), result_fields={'answer': 'integer'}))
+                    adapter = NativePromptAdapter(policy_bytes=raw, expected_policy_sha256=shadow._hash(raw),
+                        collection_policy_bytes=cp, native_source=args.native_source, python=args.python,
+                        evidence_dir=folder/'native-traces', api_key='synthetic-no-live-credential')
                 adapter.start()
                 text, prompt = 'New isolated diagnostic control ' + mode, 'Return JSON with answer 7 and no actions.'
                 logical = {'schema_version': 'hermes-shadow-request/1.0',
@@ -127,9 +143,14 @@ def main():
                     and json.loads(wire) == server.generations[0],
                     'sealed_profile': len(profiles) == 1 and profiles[0].st_uid == profiles[0].st_gid == 0
                     and stat.S_IMODE(profiles[0].st_mode) == 0o700}
-                if mode == 'complete':
+                if mode in ('complete', 'long-reasoning'):
                     checks['complete_receipt'] = code is None and json.loads(receipt)['status'] == 'completed'
                     checks['no_failure_diagnostic'] = trace.get('generation_failure') is None
+                    if mode == 'long-reasoning':
+                        checks['large_complete_trace'] = (folder/'native-traces/worker-0000.json').stat().st_size > 4 * 1024 * 1024
+                        checks['all_reasoning_retained'] = parse_wire_response(captured, server.model)['reasoning_characters'] == 8000
+                        checks['requested_long_reasoning_budget'] = server.generations[0]['max_tokens'] == 8192 \
+                            and server.generations[0]['reasoning_effort'] == 'medium'
                     collection._lifecycle(adapter.finish())
                     checks['exact_owned_cleanup'] = adapter.state == 'closed' and not server.loaded \
                         and server.unloads == [{'instance_id': 'synthetic-instance'}]
@@ -138,7 +159,7 @@ def main():
                     expected_code, expected_stage = EXPECTED[mode]
                     checks['first_failure_code_stage'] = code == failure.get('code') == 'native_shadow.' + expected_code \
                         and failure.get('stage') == expected_stage
-                    checks['bounded_partial_capture'] = failure.get('response_bytes_retained') == len(captured) <= MAX_WIRE \
+                    checks['bounded_partial_capture'] = failure.get('response_bytes_retained') == len(captured) <= MAX_RESPONSE_WIRE \
                         and failure.get('response_bytes_observed', -1) >= len(captured) > 0
                     checks['incomplete_remains_uncertain'] = trace['server_finished'] is False \
                         and receipt is None and adapter.state == 'uncertain'
