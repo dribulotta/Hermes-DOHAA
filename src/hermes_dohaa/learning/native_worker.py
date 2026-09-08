@@ -6,14 +6,13 @@ import base64
 import contextlib
 import json
 import os
-import resource
 import socket
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import shadow
-from .native_prompt import (MAX_WIRE, NativePromptError, native_bridge_sha256, parse_wire_response,
+from .native_prompt import (FAILURE_CODES, MAX_WIRE, NativePromptError, native_bridge_sha256, parse_wire_response,
                             prompt_frame, validate_native_policy, validate_request, validate_wire_request)
 
 
@@ -44,6 +43,26 @@ class Guard:
         self.posts, self.denied, self.metadata = 0, 0, 0
         self.request_bytes = self.response_bytes = b''
         self.server_finished, self.parsed = False, None
+        self.response_observed = 0
+        self.generation_failure = None
+
+    def record_failure(self, exc, stage, status, httpx):
+        # Preserve the first dispatched-generation failure. Native retries and
+        # summary attempts are denied separately and cannot erase its cause.
+        if self.generation_failure is not None:
+            return
+        code = 'native_shadow.transport_error'
+        if isinstance(exc, NativePromptError) and exc.code in FAILURE_CODES:
+            code = exc.code
+        elif isinstance(exc, httpx.TimeoutException):
+            code = 'native_shadow.transport_timeout'
+        elif stage == 'parse':
+            code = 'native_shadow.response_invalid'
+        self.generation_failure = {
+            'code': code, 'stage': stage, 'request_bytes': len(self.request_bytes),
+            'response_bytes_observed': self.response_observed,
+            'response_bytes_retained': len(self.response_bytes),
+            'http_status': status if type(status) is int and 100 <= status <= 599 else None}
 
     def install(self):
         import httpx
@@ -96,26 +115,46 @@ class Guard:
             request.extensions['timeout'] = {name: timeout for name in ('connect', 'read', 'write', 'pool')}
             kwargs['stream'] = True
             kwargs['follow_redirects'] = False
-            response = original_send(client, request, **kwargs)
-            parts, size = [], 0
+            response, stage, failed = None, 'send', False
+            data = bytearray()
             try:
-                for part in response.iter_bytes(chunk_size=65536):
-                    size += len(part)
-                    if size > MAX_WIRE:
+                response = original_send(client, request, **kwargs)
+                stage = 'read'
+                for part in response.iter_bytes():
+                    # Retain decoded chunks as they arrive, including a bounded
+                    # prefix of an oversized chunk, even when iteration fails.
+                    remaining = MAX_WIRE - len(data)
+                    data.extend(part[:remaining])
+                    if generation:
+                        owner.response_observed = min(2**63-1, owner.response_observed + len(part))
+                        owner.response_bytes = bytes(data)
+                    if len(part) > remaining:
                         raise NativePromptError('native_shadow.wire_limit')
-                    parts.append(part)
+                if generation:
+                    stage = 'http_status'
+                    if response.status_code != 200:
+                        raise NativePromptError('native_shadow.http_status')
+                    stage = 'parse'
+                    owner.parsed = parse_wire_response(bytes(data), owner.policy['model'])
+            except Exception as exc:
+                failed = True
+                if generation:
+                    owner.record_failure(exc, stage, getattr(response, 'status_code', None), httpx)
+                raise
             finally:
-                response.close()
-            data = b''.join(parts)
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception as exc:
+                        if not failed:
+                            if generation:
+                                owner.record_failure(exc, 'close', response.status_code, httpx)
+                            raise
             if generation:
-                owner.response_bytes = data
-                if response.status_code != 200:
-                    raise NativePromptError('native_shadow.http_status')
-                owner.parsed = parse_wire_response(data, owner.policy['model'])
                 owner.server_finished = True
             headers = {key: value for key, value in response.headers.items()
                        if key.lower() not in {'content-encoding', 'content-length', 'transfer-encoding'}}
-            return httpx.Response(response.status_code, headers=headers, content=data, request=request)
+            return httpx.Response(response.status_code, headers=headers, content=bytes(data), request=request)
 
         socket.socket.connect, socket.socket.connect_ex = connect, connect_ex
         httpx.Client.send = send
@@ -126,6 +165,7 @@ class Guard:
 
 
 def execute(config):
+    import resource
     policy = validate_native_policy(shadow._canonical(config['policy']), config['runtime_policy_sha256'])
     request = validate_request(shadow._canonical(config['request']), config['collection_policy_sha256'])
     if shadow._hash(shadow._canonical(request)) != config['request_sha256']:
@@ -194,6 +234,7 @@ def execute(config):
     result.update(server_finished=guard.server_finished, actual_requests=guard.posts,
                   denied_continuations=guard.denied, metadata_requests=guard.metadata,
                   native_completed=native_completed, content_matches_wire=matches,
+                  generation_failure=guard.generation_failure,
                   wire_request_base64=base64.b64encode(guard.request_bytes).decode('ascii'),
                   wire_response_base64=base64.b64encode(guard.response_bytes).decode('ascii'))
     return result

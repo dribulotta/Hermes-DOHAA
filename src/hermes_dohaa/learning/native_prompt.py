@@ -28,12 +28,43 @@ from . import collection, shadow
 MAX_WIRE = 512 * 1024
 MAX_TRACE = 32 * 1024 * 1024
 _REASONS = {'none', 'minimal', 'low', 'medium', 'high', 'xhigh'}
+FAILURE_STAGES = frozenset({'send', 'read', 'close', 'http_status', 'parse'})
+FAILURE_CODES = frozenset('native_shadow.' + name for name in (
+    'transport_error', 'transport_timeout', 'wire_limit', 'http_status',
+    'response_invalid', 'response_incomplete', 'response_identity', 'response_choices',
+    'response_tools', 'response_role', 'response_content', 'response_limit'))
 
 
 class NativePromptError(RuntimeError):
     def __init__(self, code='native_shadow.invalid'):
         self.code = code
         super().__init__(code)
+
+
+def worker_failure_code(trace):
+    """Read finite diagnostic metadata, never an arbitrary worker error message.
+
+    This is diagnostic evidence only: it cannot establish server completion or
+    authorize cleanup. Callers must separately verify worker/request bindings.
+    """
+    failure = trace.get('generation_failure')
+    fallback = 'native_shadow.worker_unverified'
+    if type(failure) is not dict or set(failure) != {
+            'code', 'stage', 'request_bytes', 'response_bytes_observed',
+            'response_bytes_retained', 'http_status'}:
+        return fallback
+    if (type(failure['code']) is not str or failure['code'] not in FAILURE_CODES
+            or type(failure['stage']) is not str or failure['stage'] not in FAILURE_STAGES):
+        return fallback
+    for field, limit in (('request_bytes', MAX_WIRE), ('response_bytes_observed', 2**63-1),
+                         ('response_bytes_retained', MAX_WIRE)):
+        if type(failure[field]) is not int or not 0 <= failure[field] <= limit:
+            return fallback
+    status = failure['http_status']
+    if ((status is not None and (type(status) is not int or not 100 <= status <= 599))
+            or failure['response_bytes_retained'] > failure['response_bytes_observed']):
+        return fallback
+    return failure['code']
 
 
 def native_adapter_sha256():
@@ -328,7 +359,11 @@ class NativePromptAdapter:
                 or trace.get('identity_isolated') is not True or trace.get('agent_class') != 'AIAgent'
                 or trace.get('runtime_policy_sha256') != self.runtime_policy_sha256
                 or trace.get('bridge_sha256') != self.policy['bridge_sha256']
-                or trace.get('profile_passed') is not True or trace.get('server_finished') is not True):
+                or trace.get('profile_passed') is not True):
+            raise NativePromptError('native_shadow.worker_unverified')
+        if trace.get('server_finished') is not True:
+            raise NativePromptError(worker_failure_code(trace))
+        if trace.get('generation_failure') is not None:
             raise NativePromptError('native_shadow.worker_unverified')
         wire_request = base64.b64decode(trace['wire_request_base64'], validate=True)
         wire_response = base64.b64decode(trace['wire_response_base64'], validate=True)
