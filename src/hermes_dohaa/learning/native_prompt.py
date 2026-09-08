@@ -26,7 +26,11 @@ from urllib.parse import urlsplit
 from . import collection, shadow
 
 MAX_WIRE = 512 * 1024
-MAX_TRACE = 32 * 1024 * 1024
+# SSE repeats framing for each delta; its response needs a separate bound from
+# requests and metadata. Base64 of both maximum bodies fits an 8 MiB trace.
+MAX_RESPONSE_WIRE = 4 * 1024 * 1024
+MAX_WORKER_TRACE = 8 * 1024 * 1024
+MAX_TRACE = 64 * MAX_WORKER_TRACE
 _REASONS = {'none', 'minimal', 'low', 'medium', 'high', 'xhigh'}
 FAILURE_STAGES = frozenset({'send', 'read', 'close', 'http_status', 'parse'})
 FAILURE_CODES = frozenset('native_shadow.' + name for name in (
@@ -57,7 +61,7 @@ def worker_failure_code(trace):
             or type(failure['stage']) is not str or failure['stage'] not in FAILURE_STAGES):
         return fallback
     for field, limit in (('request_bytes', MAX_WIRE), ('response_bytes_observed', 2**63-1),
-                         ('response_bytes_retained', MAX_WIRE)):
+                         ('response_bytes_retained', MAX_RESPONSE_WIRE)):
         if type(failure[field]) is not int or not 0 <= failure[field] <= limit:
             return fallback
     status = failure['http_status']
@@ -161,7 +165,7 @@ def validate_wire_request(data: bytes, logical: dict[str, Any], policy: dict[str
 
 def parse_wire_response(data: bytes, model: str):
     """Require a complete single-choice OpenAI JSON/SSE response, never a prefix."""
-    if type(data) is not bytes or len(data) > MAX_WIRE:
+    if type(data) is not bytes or len(data) > MAX_RESPONSE_WIRE:
         raise NativePromptError('native_shadow.wire_limit')
     stream = data.lstrip().startswith(b'data:')
     documents = []
@@ -311,7 +315,7 @@ class NativePromptAdapter:
         current = self._catalog()
         if set(current) != self.owned or any(model != self.policy['model'] for model in current.values()):
             raise NativePromptError('native_shadow.residency_changed')
-        if self.trace_bytes + 3 * MAX_WIRE > MAX_TRACE:
+        if self.trace_bytes + MAX_WORKER_TRACE > MAX_TRACE:
             raise NativePromptError('native_shadow.trace_budget')
         profile = self.worker_root / ('profile-' + str(self.calls))
         profile.mkdir(mode=0o700)

@@ -12,7 +12,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import shadow
-from .native_prompt import (FAILURE_CODES, MAX_WIRE, NativePromptError, native_bridge_sha256, parse_wire_response,
+from .native_prompt import (FAILURE_CODES, MAX_WIRE, MAX_RESPONSE_WIRE, MAX_WORKER_TRACE,
+                            NativePromptError, native_bridge_sha256, parse_wire_response,
                             prompt_frame, validate_native_policy, validate_request, validate_wire_request)
 
 
@@ -117,13 +118,14 @@ class Guard:
             kwargs['follow_redirects'] = False
             response, stage, failed = None, 'send', False
             data = bytearray()
+            capture_limit = MAX_RESPONSE_WIRE if generation else MAX_WIRE
             try:
                 response = original_send(client, request, **kwargs)
                 stage = 'read'
                 for part in response.iter_bytes():
                     # Retain decoded chunks as they arrive, including a bounded
                     # prefix of an oversized chunk, even when iteration fails.
-                    remaining = MAX_WIRE - len(data)
+                    remaining = capture_limit - len(data)
                     data.extend(part[:remaining])
                     if generation:
                         owner.response_observed = min(2**63-1, owner.response_observed + len(part))
@@ -173,7 +175,7 @@ def execute(config):
     if os.geteuid() != policy['worker_uid'] or os.getegid() != policy['worker_gid'] or os.geteuid() == 0:
         raise NativePromptError('native_shadow.worker_identity')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (4 * 1024 * 1024, 4 * 1024 * 1024))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_WORKER_TRACE, MAX_WORKER_TRACE))
     profile = Path(config['profile']).resolve()
     if Path.cwd() != profile or os.environ.get('HERMES_HOME') != str(profile):
         raise NativePromptError('native_shadow.worker_profile')

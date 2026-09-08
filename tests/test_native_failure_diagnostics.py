@@ -104,11 +104,11 @@ class GuardDiagnosticsTests(unittest.TestCase):
         self.failure('transport_error', 'read', 1, 1)
 
     def test_capture_limit_retains_exact_bounded_prefix_of_large_chunk(self):
-        self.transport.return_value = Stream([b'a' * 3, b'b' * n.MAX_WIRE])
+        self.transport.return_value = Stream([b'a' * 3, b'b' * n.MAX_RESPONSE_WIRE])
         with self.assertRaisesRegex(n.NativePromptError, 'wire_limit'):
             self.send()
-        self.failure('wire_limit', 'read', n.MAX_WIRE + 3, n.MAX_WIRE)
-        self.assertEqual(self.guard.response_bytes, b'aaa' + b'b' * (n.MAX_WIRE - 3))
+        self.failure('wire_limit', 'read', n.MAX_RESPONSE_WIRE + 3, n.MAX_RESPONSE_WIRE)
+        self.assertEqual(self.guard.response_bytes, b'aaa' + b'b' * (n.MAX_RESPONSE_WIRE - 3))
 
     def test_http_status_preserves_body_as_private_evidence_only(self):
         self.transport.return_value = Stream([b'private exception'], status=503)
@@ -168,7 +168,7 @@ class DiagnosticValidationTests(unittest.TestCase):
     def test_malformed_or_unbounded_diagnostics_never_export_arbitrary_values(self):
         for field, value in (('code', 'private exception'), ('code', []), ('stage', {}),
             ('request_bytes', True), ('response_bytes_observed', -1), ('response_bytes_observed', 2**63),
-            ('response_bytes_retained', n.MAX_WIRE + 1), ('response_bytes_retained', 8),
+            ('response_bytes_retained', n.MAX_RESPONSE_WIRE + 1), ('response_bytes_retained', 8),
             ('http_status', 'private exception'), ('http_status', True), ('extra', 'private exception')):
             with self.subTest(field=field, value=value):
                 bad = {**diagnostic(), field: value}

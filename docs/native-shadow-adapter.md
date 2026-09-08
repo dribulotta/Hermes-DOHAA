@@ -122,9 +122,11 @@ It does not independently measure GPU work or prove a provider honored that
 limit; raw response usage remains in private transport evidence. Per-request
 HTTP timeouts and a separate process deadline bound waiting. A process timeout
 kills only that worker, not the provider; server completion remains unknown.
-Core dumps are disabled and worker files are size-limited. Raw HTTP bodies are
-bounded to 512 KiB and retained traces to 32 MiB; these are data limits, not a
-complete CPU/RSS/disk quota system.
+Core dumps are disabled and worker files are size-limited. Request and metadata
+bodies are bounded to 512 KiB, generation responses to 4 MiB, individual worker
+traces/files to 8 MiB and aggregate traces to 512 MiB. The adapter reserves room
+for a maximum-sized trace before every worker. These are data limits, not a
+complete CPU/RSS/disk quota system. See [stream capacity](native-stream-capacity.md).
 
 ## Residency and failure behavior
 
