@@ -1,0 +1,657 @@
+{
+  "audit": {
+    "activation_authorized": false,
+    "counterfactual_generation_time": {
+      "direct": {
+        "median_configuration_seconds": 14.774445926,
+        "total_seconds": 5690.1083066500005
+      },
+      "dohaa": {
+        "median_configuration_seconds": 14.774445926,
+        "total_seconds": 5690.1083066500005
+      },
+      "simple": {
+        "median_configuration_seconds": 15.357167169499998,
+        "total_seconds": 5738.30596479
+      }
+    },
+    "elapsed_seconds": 5785.649,
+    "execution_attested": false,
+    "manifest_sha256": "d98e0e43b763b2d3ecea801948f384626aa29a83913be2d1cd2a28d356da5a3b",
+    "mode_distinction_verified": true,
+    "mode_observations": {
+      "m0-medium": {
+        "calls": 32,
+        "reasoning_observed_calls": 32
+      },
+      "m0-none": {
+        "calls": 32,
+        "reasoning_observed_calls": 0
+      },
+      "m1-medium": {
+        "calls": 32,
+        "reasoning_observed_calls": 32
+      },
+      "m1-none": {
+        "calls": 35,
+        "reasoning_observed_calls": 0
+      },
+      "m2-medium": {
+        "calls": 32,
+        "reasoning_observed_calls": 32
+      },
+      "m2-none": {
+        "calls": 35,
+        "reasoning_observed_calls": 0
+      }
+    },
+    "model_modes": [
+      {
+        "mode": "none",
+        "model_index": 0,
+        "totals": {
+          "direct": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 16,
+            "success": 16
+          },
+          "dohaa": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 32
+          },
+          "simple": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 32
+          }
+        }
+      },
+      {
+        "mode": "medium",
+        "model_index": 0,
+        "totals": {
+          "direct": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 32
+          },
+          "dohaa": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 32
+          },
+          "simple": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 32
+          }
+        }
+      },
+      {
+        "mode": "none",
+        "model_index": 1,
+        "totals": {
+          "direct": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 19,
+            "success": 13
+          },
+          "dohaa": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 29
+          },
+          "simple": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 35,
+            "incorrect_accepted": 0,
+            "success": 29
+          }
+        }
+      },
+      {
+        "mode": "medium",
+        "model_index": 1,
+        "totals": {
+          "direct": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 19
+          },
+          "dohaa": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 19
+          },
+          "simple": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 19
+          }
+        }
+      },
+      {
+        "mode": "none",
+        "model_index": 2,
+        "totals": {
+          "direct": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 19,
+            "success": 13
+          },
+          "dohaa": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 29
+          },
+          "simple": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 35,
+            "incorrect_accepted": 0,
+            "success": 31
+          }
+        }
+      },
+      {
+        "mode": "medium",
+        "model_index": 2,
+        "totals": {
+          "direct": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 1,
+            "success": 18
+          },
+          "dohaa": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 19
+          },
+          "simple": {
+            "actions_accepted": 0,
+            "counterfactual_generations": 32,
+            "incorrect_accepted": 0,
+            "success": 19
+          }
+        }
+      }
+    ],
+    "protocol_sha256": "2bec424db19074bada37dbbb64e2b057ebbc6d169fb9007911f96f3edda34cd5",
+    "real_calls": 198,
+    "reference": {
+      "cases": 32,
+      "correct": 32,
+      "real_model_requests": 0,
+      "scope": "visible formulas and committed source bindings only; no private reference supplied to solver"
+    },
+    "status": "passed",
+    "summary": {
+      "case_count": 32,
+      "complete": true,
+      "configurations": 192,
+      "exact_one_sided_p": 1.0,
+      "execution_attested": false,
+      "generation_ratio": 0.9696969696969697,
+      "improved": 0,
+      "improvement_probability_upper_95": 0.0893681989862648,
+      "regressed": 2,
+      "stable": {
+        "dohaa": 28,
+        "simple": 30
+      },
+      "stable_by_domain": {
+        "financial": {
+          "dohaa": 16,
+          "simple": 16
+        },
+        "registry": {
+          "dohaa": 12,
+          "simple": 14
+        }
+      },
+      "statistical_scope": "conditional synthetic case generator and independent case assumptions only",
+      "totals": {
+        "direct": {
+          "actions_accepted": 0,
+          "counterfactual_generations": 192,
+          "incorrect_accepted": 55,
+          "success": 111
+        },
+        "dohaa": {
+          "actions_accepted": 0,
+          "counterfactual_generations": 192,
+          "incorrect_accepted": 0,
+          "success": 160
+        },
+        "simple": {
+          "actions_accepted": 0,
+          "counterfactual_generations": 198,
+          "incorrect_accepted": 0,
+          "success": 162
+        }
+      },
+      "verdict": "minimum_gain_ruled_out_under_case_model"
+    }
+  },
+  "blocks": [
+    {
+      "actual_requests": 8,
+      "block": "m0-none-b0",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 229.727,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m0-none-b1",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 220.89,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m0-none-b2",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 202.976,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m0-none-b3",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 209.234,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m0-medium-b0",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 458.511,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m0-medium-b1",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 463.621,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m0-medium-b2",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 475.236,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m0-medium-b3",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 443.834,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m1-medium-b0",
+      "budget_exhausted_calls": 5,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 256.43,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m1-medium-b1",
+      "budget_exhausted_calls": 1,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 269.305,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m1-medium-b2",
+      "budget_exhausted_calls": 3,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 233.364,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m1-medium-b3",
+      "budget_exhausted_calls": 4,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 260.431,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 10,
+      "block": "m1-none-b0",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 119.002,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m1-none-b1",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 97.421,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 9,
+      "block": "m1-none-b2",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 110.618,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m1-none-b3",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 110.815,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 10,
+      "block": "m2-none-b0",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 123.911,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 9,
+      "block": "m2-none-b1",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 147.185,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m2-none-b2",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 95.491,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m2-none-b3",
+      "budget_exhausted_calls": 0,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 100.411,
+      "reasoning_observed_calls": 0
+    },
+    {
+      "actual_requests": 8,
+      "block": "m2-medium-b0",
+      "budget_exhausted_calls": 3,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 293.339,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m2-medium-b1",
+      "budget_exhausted_calls": 1,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 245.582,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m2-medium-b2",
+      "budget_exhausted_calls": 4,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 298.545,
+      "reasoning_observed_calls": 8
+    },
+    {
+      "actual_requests": 8,
+      "block": "m2-medium-b3",
+      "budget_exhausted_calls": 5,
+      "cleanup_confirmed": true,
+      "elapsed_seconds": 318.01,
+      "reasoning_observed_calls": 8
+    }
+  ],
+  "closed_at": "2026-09-09T10:49:12.478090+00:00",
+  "closure": {
+    "all_24_block_unloads_audited": true,
+    "audit_exit_code": 0,
+    "empty_catalog_after_each_block_audited": true,
+    "executor_exit_code": 0,
+    "frozen_files_unchanged": true,
+    "installed_native_source_unchanged": true,
+    "owned_supervisor_and_executor_absent": true,
+    "services_unchanged": true
+  },
+  "completed_block_lifecycle": [
+    {
+      "block": "m0-none-b0",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m0-none-b1",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m0-none-b2",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m0-none-b3",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m0-medium-b0",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m0-medium-b1",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m0-medium-b2",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m0-medium-b3",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-medium-b0",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-medium-b1",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-medium-b2",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-medium-b3",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-none-b0",
+      "calls_started": 10,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-none-b1",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-none-b2",
+      "calls_started": 9,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m1-none-b3",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-none-b0",
+      "calls_started": 10,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-none-b1",
+      "calls_started": 9,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-none-b2",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-none-b3",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-medium-b0",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-medium-b1",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-medium-b2",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    },
+    {
+      "block": "m2-medium-b3",
+      "calls_started": 8,
+      "cleanup_confirmed": true,
+      "final_state": "closed"
+    }
+  ],
+  "cost_note": "The shared initial generation is counted once in actual study calls and once per arm in counterfactual costs. Do not add per-arm columns. Generation times exclude controller CPU and lifecycle overhead and are not independent end-to-end latency measurements.",
+  "documentation_issue": 70,
+  "execution_attested": false,
+  "gates_acceptance_note": "Direct incorrect_accepted describes wrong emitted proposals without verifier authority; only simple and DOHAA perform gate-authorized acceptance.",
+  "historical_experiments_replayed_or_rescored": false,
+  "interpretation": "Corrected DOHAA improved the shared direct responses but did not demonstrate incremental quality over the strong simple baseline in this 2048-token synthetic operating condition. Two stable-case regressions and no gains; no universal claim or learning proof.",
+  "native_commit": "f4e8eb156876a27687a9bc7db0e1b6343a9c35c0",
+  "new_model_requests_for_reporting": 0,
+  "planned": {
+    "case_count": 32,
+    "case_generator_seed": 909090302,
+    "client_concurrency": 1,
+    "configurations": 192,
+    "domains": {
+      "financial": 16,
+      "registry": 16
+    },
+    "http_timeout_seconds": 180,
+    "max_block_requests": 24,
+    "max_tokens_per_generation": 2048,
+    "max_wall_seconds": 21600,
+    "maximum_actual_requests": 576,
+    "maximum_generations_per_repair_arm": 2,
+    "model_ids": [
+      "qwen3.6-27b-mtp",
+      "qwen/qwen3.6-35b-a3b",
+      "google/gemma-4-26b-a4b-qat"
+    ],
+    "model_seed": 908171701,
+    "no_new_call_margin_seconds": 600,
+    "reasoning_modes": [
+      "none",
+      "medium"
+    ],
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "worker_timeout_seconds": 210
+  },
+  "private_content_exported": false,
+  "production_activated": false,
+  "retention": {
+    "frozen_files": 72,
+    "full_bytes_retained_before_launch": true,
+    "manifest_sha256": "d98e0e43b763b2d3ecea801948f384626aa29a83913be2d1cd2a28d356da5a3b",
+    "protocol_sha256": "2bec424db19074bada37dbbb64e2b057ebbc6d169fb9007911f96f3edda34cd5",
+    "retained_epoch": 1788945094.6187093,
+    "scope": "separate process and private directory within the same CT105; not off-host attestation",
+    "source_archive_sha256": "c148c19fba28abfd42a8a82b91c31386cdfcd041ab083e8adfa3d86b267f8ec8"
+  },
+  "schema_version": "hermes-native-operating-budget-outcome/1.0",
+  "source_commit": "8af03ac6aa3b6338c2521ade9448d4a631ac877a",
+  "source_tree": "6b3398bc4fb57181a1574526d5bfc8c4dc0348e6",
+  "status": "closed_complete_audit_passed",
+  "terminal_token_budget_exhausted_calls": 26,
+  "verification_record_sha256": "7ba1417d4f8daee76986951c491e03d1681b228608c49ef83a8fd140f73cdd86"
+}
