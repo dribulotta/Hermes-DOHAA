@@ -287,7 +287,7 @@ class NativeLifecycleTests(unittest.TestCase):
                 def communicate(payload, timeout):
                     supplied = json.loads(payload)
                     self.assertEqual(set(supplied), {'policy', 'runtime_policy_sha256', 'collection_policy_sha256',
-                        'request', 'request_sha256', 'profile', 'api_key'})
+                        'request', 'request_sha256', 'profile', 'api_key', 'progress_fd'})
                     self.assertEqual(supplied['request'], logical)
                     trace = {'request_sha256': digest(data), 'uid': 65534, 'gid': 65534,
                         'runtime_policy_sha256': adapter.runtime_policy_sha256, 'bridge_sha256': adapter.policy['bridge_sha256'],
