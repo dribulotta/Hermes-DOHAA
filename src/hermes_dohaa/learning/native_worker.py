@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import shadow
+from .native_tool_contract import TOOL_POLICY_VERSION
 from .native_progress import ProgressWriter
 from .native_response_format import native_request_overrides
 from .native_prompt import (FAILURE_CODES, MAX_WIRE, MAX_RESPONSE_WIRE, MAX_WORKER_TRACE,
@@ -62,7 +63,7 @@ def profile_checks(agent):
 def native_model_configuration(policy):
     model = {'default': policy['model'], 'provider': 'custom', 'base_url': policy['endpoint'],
              'api_key': 'credential-supplied-only-in-memory', 'lmstudio_load_mode': 'jit'}
-    if policy['schema_version'] == 'hermes-native-shadow-policy/1.2':
+    if policy['schema_version'] in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
         model.update(provider='lmstudio', context_length=policy['context_length'])
     return model
 
@@ -70,7 +71,7 @@ def native_model_configuration(policy):
 def model_profile_checks(agent, policy):
     if not profile_checks(agent) or agent.model != policy['model']:
         return False
-    if policy['schema_version'] == 'hermes-native-shadow-policy/1.2':
+    if policy['schema_version'] in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
         configured = getattr(agent, '_config_context_length', None)
         effective = getattr(getattr(agent, 'context_compressor', None), 'context_length', None)
         return (getattr(agent, 'provider', None) == 'lmstudio'

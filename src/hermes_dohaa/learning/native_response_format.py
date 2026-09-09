@@ -1,5 +1,7 @@
 """Trusted fixed response schemas, not arbitrary caller-provided generation rules."""
 
+from .native_tool_contract import TOOL_POLICY_VERSION, VERSION as TOOL_CONTRACT, tool_response_format
+
 DOCUMENT_RESPONSE_CONTRACT = 'document-stream-proposal/1.0'
 
 
@@ -31,6 +33,8 @@ def response_format_for_policy(policy):
     if (version in ('hermes-native-shadow-policy/1.1', 'hermes-native-shadow-policy/1.2')
             and policy.get('response_contract') == DOCUMENT_RESPONSE_CONTRACT):
         return document_response_format()
+    if version == TOOL_POLICY_VERSION and policy.get('response_contract') == TOOL_CONTRACT:
+        return tool_response_format()
     raise ValueError('unsupported response contract')
 
 

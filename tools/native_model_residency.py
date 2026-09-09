@@ -60,6 +60,7 @@ class ModelResidency:
                        'model TEXT, context INTEGER, policy_sha TEXT, state TEXT, instance_id TEXT, '
                        'observed_context INTEGER, request_sha TEXT, load_receipt_sha TEXT, terminal_sha TEXT)')
             db.execute('CREATE TABLE IF NOT EXISTS events (sequence INTEGER PRIMARY KEY, state TEXT, details TEXT)')
+            db.execute('CREATE TABLE IF NOT EXISTS terminals (request_sha TEXT PRIMARY KEY, payload TEXT, sha TEXT)')
             db.execute("INSERT OR IGNORE INTO residency VALUES (1,?,?,?,'new',NULL,NULL,NULL,NULL,NULL)",
                        (model, context_length, policy_sha256))
             row = db.execute('SELECT * FROM residency').fetchone()
@@ -95,6 +96,17 @@ class ModelResidency:
                 raise ResidencyError('operation_unresolved_or_not_ready')
             if require_request is not None and row['request_sha'] != require_request:
                 raise ResidencyError('terminal_request_changed')
+            if state == 'generating' and db.execute('SELECT 1 FROM terminals WHERE request_sha=?',
+                                                   (fields['request_sha'],)).fetchone():
+                raise ResidencyError('request_already_completed')
+            if require_request is not None and state == 'ready':
+                terminal = {'request_sha256': require_request, 'terminal_sha256': fields['terminal_sha'],
+                            'policy_sha256': row['policy_sha'], 'model': row['model'],
+                            'context_length': row['observed_context'], 'instance_id': row['instance_id'],
+                            'load_receipt_sha256': row['load_receipt_sha']}
+                payload = _canonical(terminal)
+                db.execute('INSERT INTO terminals VALUES (?,?,?)',
+                           (require_request, payload.decode(), _digest(payload)))
             assignments = ','.join(['state=?'] + [name + '=?' for name in fields])
             db.execute('UPDATE residency SET ' + assignments + ' WHERE singleton=1', (state, *fields.values()))
             db.execute('INSERT INTO events(state,details) VALUES (?,?)',
@@ -198,6 +210,28 @@ class ModelResidency:
             raise ResidencyError('terminal_shape_invalid')
         self._transition({'generating'}, 'ready', require_request=request_sha256,
                          request_sha=None, terminal_sha=_digest(receipt_bytes))
+
+    def terminal_evidence(self, request_sha256):
+        """Durable ownership binding, not a substitute for verified native wire."""
+        _hash(request_sha256)
+        with self._transaction() as db:
+            row = db.execute('SELECT * FROM terminals WHERE request_sha=?', (request_sha256,)).fetchone()
+        if row is None: raise ResidencyError('terminal_history_missing')
+        raw = row['payload'].encode()
+        from hermes_dohaa.learning import shadow
+        item = shadow._json(raw, row['sha'])
+        if (set(item) != {'request_sha256','terminal_sha256','policy_sha256','model',
+                          'context_length','instance_id','load_receipt_sha256'}
+                or item['request_sha256'] != request_sha256 or item['policy_sha256'] != self.policy_sha
+                or item['model'] != self.model or type(item['context_length']) is not int
+                or item['context_length'] != self.context):
+            raise ResidencyError('terminal_history_binding')
+        _identifier(item['instance_id']); _hash(item['terminal_sha256'])
+        load = {'instance_id': item['instance_id'], 'context_length': item['context_length'],
+                'policy_sha256': item['policy_sha256']}
+        if item['load_receipt_sha256'] != _digest(_canonical(load)):
+            raise ResidencyError('load_history_binding')
+        return item
 
     def finish(self):
         row = self.snapshot()
