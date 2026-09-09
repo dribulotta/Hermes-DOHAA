@@ -59,6 +59,26 @@ def profile_checks(agent):
     return all(checks.values())
 
 
+def native_model_configuration(policy):
+    model = {'default': policy['model'], 'provider': 'custom', 'base_url': policy['endpoint'],
+             'api_key': 'credential-supplied-only-in-memory', 'lmstudio_load_mode': 'jit'}
+    if policy['schema_version'] == 'hermes-native-shadow-policy/1.2':
+        model.update(provider='lmstudio', context_length=policy['context_length'])
+    return model
+
+
+def model_profile_checks(agent, policy):
+    if not profile_checks(agent) or agent.model != policy['model']:
+        return False
+    if policy['schema_version'] == 'hermes-native-shadow-policy/1.2':
+        configured = getattr(agent, '_config_context_length', None)
+        effective = getattr(getattr(agent, 'context_compressor', None), 'context_length', None)
+        return (getattr(agent, 'provider', None) == 'lmstudio'
+                and type(configured) is int and configured == policy['context_length']
+                and type(effective) is int and effective == policy['context_length'])
+    return True
+
+
 class Guard:
     def __init__(self, policy, logical, api_key, progress=None):
         self.policy, self.logical, self.api_key = policy, logical, api_key
@@ -222,9 +242,9 @@ def execute(config):
     guard.install()
     import yaml
     from toolsets import TOOLSETS
+    model_configuration = native_model_configuration(policy)
     configuration = {
-        'model': {'default': policy['model'], 'provider': 'custom', 'base_url': policy['endpoint'],
-                  'api_key': 'credential-supplied-only-in-memory', 'lmstudio_load_mode': 'jit'},
+        'model': model_configuration,
         'auxiliary': {'title_generation': {'enabled': False}, 'background_review': {'enabled': False}},
         'platform_toolsets': {'api_server': []},
         'agent': {'max_turns': 1, 'tool_use_enforcement': False, 'execution_guidance': False,
@@ -248,8 +268,8 @@ def execute(config):
               'profile_passed': False, 'agent_class': None}
     try:
         with setup_phase(result, 'create_agent'):
-            agent = adapter._create_agent(requested_model=policy['model'], requested_provider='custom',
-                route={'model': policy['model'], 'provider': 'custom', 'base_url': policy['endpoint'],
+            agent = adapter._create_agent(requested_model=policy['model'], requested_provider=model_configuration['provider'],
+                route={'model': policy['model'], 'provider': model_configuration['provider'], 'base_url': policy['endpoint'],
                        'api_key': config['api_key']},
                 model_options={'reasoning': {'enabled': policy['reasoning_effort'] != 'none',
                                              'effort': policy['reasoning_effort']}},
@@ -261,7 +281,7 @@ def execute(config):
             agent._handle_max_iterations = guard.deny_summary
             result['agent_class'] = type(agent).__name__
         with setup_phase(result, 'profile_check'):
-            result['profile_passed'] = profile_checks(agent) and agent.model == policy['model']
+            result['profile_passed'] = model_profile_checks(agent, policy)
             if not result['profile_passed']:
                 raise NativePromptError('native_shadow.profile_rejected')
         guard.report_progress('agent_ready')

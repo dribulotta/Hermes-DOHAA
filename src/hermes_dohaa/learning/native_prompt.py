@@ -90,8 +90,10 @@ def validate_native_policy(data: bytes, expected_sha256: str):
     fields = {'schema_version', 'native_commit', 'bridge_sha256', 'model', 'endpoint',
         'reasoning_effort', 'seed', 'temperature', 'top_p', 'max_tokens', 'request_timeout_seconds',
         'worker_timeout_seconds', 'request_limit', 'worker_uid', 'worker_gid', 'exclusive_backend'}
-    if policy.get('schema_version') == 'hermes-native-shadow-policy/1.1':
+    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.1','hermes-native-shadow-policy/1.2'):
         fields.add('response_contract')
+    if policy.get('schema_version') == 'hermes-native-shadow-policy/1.2':
+        fields.add('context_length')
     shadow._fields(policy, fields)
     try:
         response_format_for_policy(policy)
@@ -111,6 +113,10 @@ def validate_native_policy(data: bytes, expected_sha256: str):
             raise NativePromptError('native_shadow.policy_invalid')
     for name, low, high in (('temperature', 0, 2), ('top_p', 0, 1)):
         if type(policy[name]) not in (int, float) or not low <= policy[name] <= high:
+            raise NativePromptError('native_shadow.policy_invalid')
+    if policy.get('schema_version') == 'hermes-native-shadow-policy/1.2':
+        context = policy['context_length']
+        if type(context) is not int or not policy['max_tokens'] < context <= 262144:
             raise NativePromptError('native_shadow.policy_invalid')
     if not policy['top_p'] or policy['worker_timeout_seconds'] <= policy['request_timeout_seconds']:
         raise NativePromptError('native_shadow.policy_invalid')

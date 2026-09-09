@@ -28,7 +28,7 @@ def response_format_for_policy(policy):
     version = policy.get('schema_version')
     if version == 'hermes-native-shadow-policy/1.0' and 'response_contract' not in policy:
         return None
-    if (version == 'hermes-native-shadow-policy/1.1'
+    if (version in ('hermes-native-shadow-policy/1.1', 'hermes-native-shadow-policy/1.2')
             and policy.get('response_contract') == DOCUMENT_RESPONSE_CONTRACT):
         return document_response_format()
     raise ValueError('unsupported response contract')
