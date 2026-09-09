@@ -11,6 +11,9 @@ This is an explicit mode. Contracts without this field retain their existing
 structural-only evidence checks. They do not gain source or claim verification
 merely by upgrading the code. A present but invalid policy, including `null`,
 is rejected; it never disables the stronger checks silently.
+CLI validation and evaluation loading apply the same admission checks. An
+invalid declared policy is rejected before a suite commitment can be written.
+These checks inspect the contract, not the private expected evaluation result.
 
 ## Trust boundary
 
@@ -53,6 +56,13 @@ are literal strings of at most 512 characters each and may be empty. Pointers
 are valid JSON Pointers of at most 1024 characters; the empty pointer selects the
 whole value, and `~0` and `~1` escape a tilde and slash. All policy strings must
 be valid Unicode.
+
+Every `required_evidence` ID in every acceptance criterion must belong to the
+policy's committed source set. A prefix must not start with whitespace, and a
+suffix must not end with whitespace: proposal parsing strips statement edges,
+making such exact bindings impossible to satisfy. These policies are rejected
+without changing their text. Separator whitespace next to the canonical value
+(for example, prefix `Stock is ` or suffix ` units`) remains valid.
 
 The content digest is SHA-256 of the source's JSON representation encoded as UTF-8:
 sorted object keys, no extra whitespace, Unicode retained, and no non-finite
