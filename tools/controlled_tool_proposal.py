@@ -9,13 +9,8 @@ import json
 
 from tools.controlled_tools import Operation
 
-VERSION = 'controlled-tool-proposal/1.0'
-MAX_BYTES = 16384
-MAX_INTEGER = 2**31 - 1
-ABSTENTION_REASONS = ('no_action', 'inventory_unavailable', 'insufficient_stock',
-                      'conflicting_sources')
-FIELDS = {'schema_version', 'decision', 'product', 'quantity', 'expected_version',
-          'reservation_id', 'reason'}
+from hermes_dohaa.learning.native_tool_contract import (
+    VERSION, MAX_BYTES, MAX_INTEGER, ABSTENTION_REASONS, FIELDS, tool_response_format)
 
 
 def _identifier(value):
@@ -147,25 +142,3 @@ def bind_tool_proposal(data: bytes, step: HostStep) -> BoundProposal:
             raise ValueError('release_outside_scope')
     return BoundProposal(Operation(step.operation_id, step.task_id, step.step_id,
                                    kind, product, quantity, version, reservation), reason)
-
-
-def tool_response_format():
-    """Fresh fixed schema; branch semantics and host permissions remain in parser.
-
-    This is not yet registered with the native document-only adapter. A later
-    integration must verify the actual wire contract and provider compatibility.
-    """
-    identifier = lambda: {'type': ['string', 'null'], 'minLength': 1, 'maxLength': 128}
-    integer = lambda minimum: {'type': ['integer', 'null'], 'minimum': minimum,
-                               'maximum': MAX_INTEGER}
-    properties = {
-        'schema_version': {'type': 'string', 'enum': [VERSION]},
-        'decision': {'type': 'string', 'enum': ['reserve', 'release', 'abstain']},
-        'product': identifier(), 'quantity': integer(1),
-        'expected_version': integer(0), 'reservation_id': identifier(),
-        'reason': {'type': 'string', 'enum': ['none', *ABSTENTION_REASONS]},
-    }
-    return {'type': 'json_schema', 'json_schema': {
-        'name': 'hermes_controlled_tool_proposal_v1', 'strict': True,
-        'schema': {'type': 'object', 'additionalProperties': False,
-                   'properties': properties, 'required': list(properties)}}}

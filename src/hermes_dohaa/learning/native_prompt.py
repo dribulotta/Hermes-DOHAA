@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -24,6 +25,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from . import collection, shadow
+from .native_tool_contract import TOOL_POLICY_VERSION
 from .native_progress import MAX_PROGRESS_BYTES, ProgressChannel
 from .native_response_format import response_format_for_policy
 
@@ -78,11 +80,11 @@ def native_adapter_sha256():
 
 
 def native_bridge_sha256():
-    paths = (Path(__file__), Path(__file__).with_name('native_worker.py'),
-             Path(__file__).with_name('native_progress.py'),
-             Path(__file__).with_name('native_response_format.py'))
-    return shadow._hash(shadow._canonical({p.name: shadow._hash(p.read_bytes().replace(b'\r\n', b'\n'))
-                                          for p in paths}))
+    # Bind every Python module copied into the isolated worker, including
+    # transitive imports and the shared tool contract. Paths prevent collisions.
+    package = Path(__file__).resolve().parents[1]
+    return shadow._hash(shadow._canonical({str(p.relative_to(package)).replace('\\', '/'):
+        shadow._hash(p.read_bytes().replace(b'\r\n', b'\n')) for p in sorted(package.rglob('*.py'))}))
 
 
 def validate_native_policy(data: bytes, expected_sha256: str):
@@ -90,9 +92,9 @@ def validate_native_policy(data: bytes, expected_sha256: str):
     fields = {'schema_version', 'native_commit', 'bridge_sha256', 'model', 'endpoint',
         'reasoning_effort', 'seed', 'temperature', 'top_p', 'max_tokens', 'request_timeout_seconds',
         'worker_timeout_seconds', 'request_limit', 'worker_uid', 'worker_gid', 'exclusive_backend'}
-    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.1','hermes-native-shadow-policy/1.2'):
+    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.1','hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
         fields.add('response_contract')
-    if policy.get('schema_version') == 'hermes-native-shadow-policy/1.2':
+    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
         fields.add('context_length')
     shadow._fields(policy, fields)
     try:
@@ -114,7 +116,7 @@ def validate_native_policy(data: bytes, expected_sha256: str):
     for name, low, high in (('temperature', 0, 2), ('top_p', 0, 1)):
         if type(policy[name]) not in (int, float) or not low <= policy[name] <= high:
             raise NativePromptError('native_shadow.policy_invalid')
-    if policy.get('schema_version') == 'hermes-native-shadow-policy/1.2':
+    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
         context = policy['context_length']
         if type(context) is not int or not policy['max_tokens'] < context <= 262144:
             raise NativePromptError('native_shadow.policy_invalid')
@@ -243,6 +245,111 @@ def parse_wire_response(data: bytes, model: str):
     return {'content': text, 'finish_reason': finishes[0], 'reasoning_characters': reasoning}
 
 
+
+def verify_worker_terminal(data, request_bytes, collection_sha256, policy, runtime_policy_sha256, returncode):
+    """Recheck full captured wire and worker bindings; no progress authority."""
+    request = validate_request(request_bytes, collection_sha256)
+    trace = shadow._json(data, shadow._hash(data))
+    if (returncode or trace.get('request_sha256') != shadow._hash(request_bytes)
+            or trace.get('uid') != policy['worker_uid'] or trace.get('gid') != policy['worker_gid']
+            or trace.get('identity_isolated') is not True or trace.get('agent_class') != 'AIAgent'
+            or trace.get('runtime_policy_sha256') != runtime_policy_sha256
+            or trace.get('bridge_sha256') != policy['bridge_sha256']
+            or trace.get('profile_passed') is not True):
+        raise NativePromptError('native_shadow.worker_unverified')
+    if trace.get('server_finished') is not True:
+        raise NativePromptError(worker_failure_code(trace))
+    if trace.get('generation_failure') is not None:
+        raise NativePromptError('native_shadow.worker_unverified')
+    wire_request = base64.b64decode(trace['wire_request_base64'], validate=True)
+    wire_response = base64.b64decode(trace['wire_response_base64'], validate=True)
+    validate_wire_request(wire_request, request, policy)
+    parsed = parse_wire_response(wire_response, policy['model'])
+    if policy['reasoning_effort'] == 'none' and parsed['reasoning_characters']:
+        raise NativePromptError('native_shadow.reasoning_mismatch')
+    if type(trace.get('actual_requests')) is not int or trace['actual_requests'] != 1:
+        raise NativePromptError('native_shadow.native_result_unverified')
+    budget_stopped = parsed['finish_reason'] == 'length' or bool(trace.get('denied_continuations'))
+    if not budget_stopped and trace.get('native_completed') is True and trace.get('content_matches_wire') is not True:
+        raise NativePromptError('native_shadow.native_result_unverified')
+    receipt = {'schema_version': 'hermes-shadow-terminal/1.0',
+               'request_sha256': shadow._hash(request_bytes), 'server_finished': True}
+    if budget_stopped:
+        return shadow._canonical(dict(receipt, status='failed', error_code='budget_exhausted'))
+    if trace.get('native_completed') is not True:
+        return shadow._canonical(dict(receipt, status='failed', error_code='runtime_error'))
+    return shadow._canonical(dict(receipt, status='completed', content=parsed['content']))
+
+
+def protected_directory(path):
+    """Linux root-controlled storage; workers must not traverse the private leaf.
+
+    Trusted root writers are outside this boundary. A digest is integrity
+    evidence here, not authentication against a host administrator.
+    """
+    path = Path(path).absolute()
+    if os.name != 'posix' or os.geteuid() != 0:
+        raise NativePromptError('native_tool.privileged_host_required')
+    for directory in (path, *path.parents):
+        info = directory.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != 0
+                or (info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX)):
+            raise NativePromptError('native_tool.unprotected_directory')
+    if path.stat().st_mode & 0o077:
+        raise NativePromptError('native_tool.private_directory_required')
+    return path
+
+
+def protected_file(path):
+    path = Path(path).absolute()
+    protected_directory(path.parent)
+    info = path.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077
+            or info.st_nlink != 1):
+        raise NativePromptError('native_tool.unprotected_artifact')
+    return path
+
+
+def protected_read(path):
+    return shadow._read(protected_file(path))
+
+
+def verified_tool_session(evidence_dir, collection_sha256, policy, policy_sha256):
+    raw = protected_read(Path(evidence_dir) / 'session.json')
+    session = shadow._json(raw, shadow._hash(raw))
+    expected = {'schema_version': 'hermes-native-tool-session/1.0',
+                'native_commit': policy['native_commit'], 'bridge_sha256': policy['bridge_sha256'],
+                'runtime_policy_sha256': policy_sha256, 'collection_policy_sha256': collection_sha256}
+    if not shadow._equal(session, expected):
+        raise NativePromptError('native_tool.source_binding')
+    return raw
+
+
+def verified_tool_terminal(evidence_dir, request_bytes, collection_sha256, policy, policy_sha256):
+    """Read adapter-created evidence from a fixed host-owned directory only."""
+    if policy.get('schema_version') != TOOL_POLICY_VERSION:
+        raise NativePromptError('native_tool.contract_required')
+    root = protected_directory(evidence_dir)
+    request_sha = shadow._hash(request_bytes)
+    raw = protected_read(root / (request_sha + '.terminal'))
+    proof = shadow._json(raw, shadow._hash(raw))
+    shadow._fields(proof, {'schema_version', 'request_sha256', 'session_sha256',
+                          'trace_name', 'trace_sha256', 'receipt_base64'})
+    if (proof['schema_version'] != 'hermes-native-tool-evidence/1.0'
+            or proof['request_sha256'] != request_sha
+            or type(proof['trace_name']) is not str
+            or re.fullmatch(r'worker-[0-9]{4}\.json', proof['trace_name']) is None):
+        raise NativePromptError('native_tool.evidence_binding')
+    session = verified_tool_session(root, collection_sha256, policy, policy_sha256)
+    shadow._json(session, proof['session_sha256'])
+    trace_bytes = protected_read(root / proof['trace_name'])
+    shadow._json(trace_bytes, proof['trace_sha256'])
+    receipt = verify_worker_terminal(trace_bytes, request_bytes, collection_sha256, policy, policy_sha256, 0)
+    if base64.b64decode(proof['receipt_base64'], validate=True) != receipt:
+        raise NativePromptError('native_tool.terminal_changed')
+    return receipt, shadow._hash(raw)
+
+
 class NativePromptAdapter:
     """One native worker per request; credentials never enter argv, env or reports."""
 
@@ -324,11 +431,19 @@ class NativePromptAdapter:
         for path in target.rglob('*'):
             os.chmod(path, 0o555 if path.is_dir() else 0o444)
         os.chmod(target, 0o555)
+        if self.policy['schema_version'] == TOOL_POLICY_VERSION:
+            shadow._publish(self.evidence_dir / 'session.json', shadow._canonical({
+                'schema_version': 'hermes-native-tool-session/1.0',
+                'native_commit': head, 'bridge_sha256': self.policy['bridge_sha256'],
+                'runtime_policy_sha256': self.runtime_policy_sha256,
+                'collection_policy_sha256': self.collection_sha256}))
         self.state = 'idle'
         return shadow._canonical(collection._LIFECYCLE)
 
     def generate(self, request_bytes: bytes):
         request = validate_request(request_bytes, self.collection_sha256)
+        if self.policy['schema_version'] == TOOL_POLICY_VERSION:
+            verified_tool_session(self.evidence_dir, self.collection_sha256, self.policy, self.runtime_policy_sha256)
         if self.state != 'idle' or self.calls >= self.policy['request_limit']:
             raise NativePromptError('native_shadow.not_ready')
         current = self._catalog()
@@ -395,41 +510,23 @@ class NativePromptAdapter:
             os.chmod(profile, 0o700, follow_symlinks=False)
         data = shadow._read(receipt_path)
         self.trace_bytes += len(data)
-        trace = shadow._json(data, shadow._hash(data))
-        if (process.returncode or trace.get('request_sha256') != shadow._hash(request_bytes)
-                or trace.get('uid') != self.policy['worker_uid'] or trace.get('gid') != self.policy['worker_gid']
-                or trace.get('identity_isolated') is not True or trace.get('agent_class') != 'AIAgent'
-                or trace.get('runtime_policy_sha256') != self.runtime_policy_sha256
-                or trace.get('bridge_sha256') != self.policy['bridge_sha256']
-                or trace.get('profile_passed') is not True):
-            raise NativePromptError('native_shadow.worker_unverified')
-        if trace.get('server_finished') is not True:
-            raise NativePromptError(worker_failure_code(trace))
-        if trace.get('generation_failure') is not None:
-            raise NativePromptError('native_shadow.worker_unverified')
-        wire_request = base64.b64decode(trace['wire_request_base64'], validate=True)
-        wire_response = base64.b64decode(trace['wire_response_base64'], validate=True)
-        validate_wire_request(wire_request, request, self.policy)
-        parsed = parse_wire_response(wire_response, self.policy['model'])
-        if self.policy['reasoning_effort'] == 'none' and parsed['reasoning_characters']:
-            raise NativePromptError('native_shadow.reasoning_mismatch')
-        if type(trace.get('actual_requests')) is not int or trace['actual_requests'] != 1:
-            raise NativePromptError('native_shadow.native_result_unverified')
-        budget_stopped = parsed['finish_reason'] == 'length' or bool(trace.get('denied_continuations'))
-        if not budget_stopped and trace.get('native_completed') is True and trace.get('content_matches_wire') is not True:
-            raise NativePromptError('native_shadow.native_result_unverified')
+        receipt = verify_worker_terminal(data, request_bytes, self.collection_sha256,
+                                         self.policy, self.runtime_policy_sha256, process.returncode)
         current = self._catalog()
         if any(model != self.policy['model'] for model in current.values()):
             raise NativePromptError('native_shadow.residency_changed')
         self.owned = set(current)
         self.state = 'idle'
-        receipt = {'schema_version': 'hermes-shadow-terminal/1.0',
-                   'request_sha256': shadow._hash(request_bytes), 'server_finished': True}
-        if budget_stopped:
-            return shadow._canonical(dict(receipt, status='failed', error_code='budget_exhausted'))
-        if trace.get('native_completed') is not True:
-            return shadow._canonical(dict(receipt, status='failed', error_code='runtime_error'))
-        return shadow._canonical(dict(receipt, status='completed', content=parsed['content']))
+        if self.policy['schema_version'] == TOOL_POLICY_VERSION:
+            session = protected_read(self.evidence_dir / 'session.json')
+            proof = {'schema_version': 'hermes-native-tool-evidence/1.0',
+                     'request_sha256': shadow._hash(request_bytes),
+                     'session_sha256': shadow._hash(session),
+                     'trace_name': receipt_path.name, 'trace_sha256': shadow._hash(data),
+                     'receipt_base64': base64.b64encode(receipt).decode('ascii')}
+            shadow._publish(self.evidence_dir / (shadow._hash(request_bytes) + '.terminal'),
+                            shadow._canonical(proof))
+        return receipt
 
     def finish(self):
         if self.state != 'idle':

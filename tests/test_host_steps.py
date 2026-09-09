@@ -254,7 +254,9 @@ store.allocate(step());store.begin_request('op-1',REQUEST,POLICY);store.record_t
 executor.fault=lambda point:fault('after_tool_effect' if point=='after_effect' else 'unused')
 executor.execute(store.bound_proposal('op-1').operation);store.reconcile_effect('op-1')
 '''
-                env=dict(os.environ,PYTHONPATH=str(Path(__file__).resolve().parent)+os.pathsep+str(Path(__file__).resolve().parents[1]))
+                env=dict(os.environ,PYTHONPATH=os.pathsep.join(map(str, (
+                    Path(__file__).resolve().parent, Path(__file__).resolve().parents[1],
+                    Path(__file__).resolve().parents[1]/'src'))))
                 child=subprocess.run([sys.executable,'-c',code,str(root),stage],env=env,capture_output=True,timeout=20)
                 self.assertEqual(child.returncode,19,child.stderr.decode(errors='replace'))
                 store,executor=stores(root)
