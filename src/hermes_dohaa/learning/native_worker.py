@@ -23,6 +23,25 @@ class BudgetStop(RuntimeError):
     pass
 
 
+@contextlib.contextmanager
+def setup_phase(trace, stage):
+    """Finite diagnostic only; never terminal/cleanup authority or exception text."""
+    if stage not in ('create_agent', 'configure_agent', 'profile_check'):
+        raise ValueError('unknown_setup_stage')
+    try:
+        yield
+    except Exception as exc:
+        kind = 'other'
+        for exception_type, label in ((PermissionError, 'permission'), (TimeoutError, 'timeout'),
+                                      (OSError, 'os'), (ValueError, 'value'), (RuntimeError, 'runtime')):
+            if isinstance(exc, exception_type):
+                kind = label
+                break
+        if trace.get('setup_failure') is None:
+            trace['setup_failure'] = {'stage': stage, 'exception_kind': kind}
+        raise
+
+
 def profile_checks(agent):
     missing = object()
     checks = {
@@ -228,20 +247,23 @@ def execute(config):
                   and os.getresgid() == (policy['worker_gid'],) * 3 and os.getgroups() == [],
               'profile_passed': False, 'agent_class': None}
     try:
-        agent = adapter._create_agent(requested_model=policy['model'], requested_provider='custom',
-            route={'model': policy['model'], 'provider': 'custom', 'base_url': policy['endpoint'],
-                   'api_key': config['api_key']},
-            model_options={'reasoning': {'enabled': policy['reasoning_effort'] != 'none',
-                                         'effort': policy['reasoning_effort']}},
-            ephemeral_system_prompt=prompt_frame(request), session_id=request['request_id'])
-        agent.max_tokens = policy['max_tokens']
-        agent.skip_background_review = True
-        agent.request_overrides = native_request_overrides(policy)
-        agent._handle_max_iterations = guard.deny_summary
-        result['agent_class'] = type(agent).__name__
-        result['profile_passed'] = profile_checks(agent) and agent.model == policy['model']
-        if not result['profile_passed']:
-            raise NativePromptError('native_shadow.profile_rejected')
+        with setup_phase(result, 'create_agent'):
+            agent = adapter._create_agent(requested_model=policy['model'], requested_provider='custom',
+                route={'model': policy['model'], 'provider': 'custom', 'base_url': policy['endpoint'],
+                       'api_key': config['api_key']},
+                model_options={'reasoning': {'enabled': policy['reasoning_effort'] != 'none',
+                                             'effort': policy['reasoning_effort']}},
+                ephemeral_system_prompt=prompt_frame(request), session_id=request['request_id'])
+        with setup_phase(result, 'configure_agent'):
+            agent.max_tokens = policy['max_tokens']
+            agent.skip_background_review = True
+            agent.request_overrides = native_request_overrides(policy)
+            agent._handle_max_iterations = guard.deny_summary
+            result['agent_class'] = type(agent).__name__
+        with setup_phase(result, 'profile_check'):
+            result['profile_passed'] = profile_checks(agent) and agent.model == policy['model']
+            if not result['profile_passed']:
+                raise NativePromptError('native_shadow.profile_rejected')
         guard.report_progress('agent_ready')
         native_result = agent.run_conversation(user_message=request['input'], conversation_history=[])
     except Exception:
