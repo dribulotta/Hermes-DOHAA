@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
 from hermes_dohaa.assurance.gates import Gate, GateResult
+from hermes_dohaa.assurance.semantic_assertions import MAX_ASSERTIONS
 from hermes_dohaa.contracts.models import TaskContract
 from hermes_dohaa.controller.identity import (
     ControlPlaneIdentity,
@@ -377,107 +378,6 @@ class DohaaController:
                 },
             )
 
-            if not all(result.passed for result in gate_results):
-                deterministic_scope = (
-                    derive_repair_scope(self.gates, gate_results)
-                    if repair_policy is not None
-                    else None
-                )
-                repair = propose_deterministic_semantic_repair(
-                    contract,
-                    proposal,
-                    editable_paths=(
-                        deterministic_scope.editable_paths
-                        if deterministic_scope is not None
-                        else (() if repair_policy is not None else None)
-                    ),
-                )
-                if repair is not None and not scoped_attempt:
-                    repaired_proposal = _clone_proposal(repair.proposal)
-                    repaired_gate_results = tuple(
-                        gate.evaluate(contract, repaired_proposal)
-                        for gate in self.gates
-                    )
-                    self._record(
-                        run_id,
-                        "gates.evaluated",
-                        {
-                            "attempt": attempt,
-                            "source": "deterministic_semantic_repair",
-                            "results": [
-                                result.to_dict()
-                                for result in repaired_gate_results
-                            ],
-                        },
-                    )
-                    deterministic_change_assessment = (
-                        assess_candidate_changes(
-                            proposal,
-                            repaired_proposal,
-                            deterministic_scope,
-                            repair_policy,
-                        )
-                        if repair_policy is not None
-                        and deterministic_scope is not None
-                        else None
-                    )
-                    deterministic_allowed = (
-                        repair_policy is None
-                        or (
-                            deterministic_change_assessment is not None
-                            and deterministic_change_assessment.allowed
-                        )
-                    )
-                    deterministic_comparison = compare_failure_sets(
-                        gate_results,
-                        repaired_gate_results,
-                        gates=(self.gates if repair_policy is not None else None),
-                        required_resolved_rule_ids=(
-                            deterministic_scope.failed_rule_ids
-                            if deterministic_scope is not None
-                            else ()
-                        ),
-                    )
-                    repaired_all = (
-                        deterministic_allowed
-                        and (
-                            repair_policy is None
-                            or deterministic_comparison.accepted
-                        )
-                        and all(
-                            result.passed
-                            for result in repaired_gate_results
-                        )
-                    )
-                    repaired_partially = (
-                        repair_policy is not None
-                        and deterministic_allowed
-                        and deterministic_comparison.accepted
-                    )
-                    if repaired_all or repaired_partially:
-                        repair_event = (
-                            "semantic.repair.applied"
-                            if repaired_all
-                            else "semantic.repair.partially_applied"
-                        )
-                        proposal = repaired_proposal
-                        gate_results = repaired_gate_results
-                    else:
-                        repair_event = "semantic.repair.rejected"
-                    repair_payload = {
-                        "assertion_ids": list(repair.assertion_ids),
-                        "result_pointers": list(repair.result_pointers),
-                    }
-                    if repaired_partially and not repaired_all:
-                        repair_payload.update(
-                            deterministic_comparison.to_dict()
-                        )
-                    self._record(
-                        run_id,
-                        repair_event,
-                        repair_payload,
-                    )
-
             if scoped_attempt:
                 final_change_assessment = assess_candidate_changes(
                     best_proposal,
@@ -524,6 +424,12 @@ class DohaaController:
                         **comparison.to_dict(),
                     },
                 )
+
+            # Validate the runtime's original authorized unit before allowing
+            # any independent deterministic units on its accepted candidate.
+            proposal, gate_results = self._repair_deterministically(
+                run_id, attempt, contract, proposal, gate_results, repair_policy,
+            )
 
             best_proposal = proposal
             best_gate_results = gate_results
@@ -582,6 +488,98 @@ class DohaaController:
             RunReasonCode.ATTEMPT_BUDGET_EXHAUSTED,
             "Attempt budget exhausted",
         )
+
+    def _repair_deterministically(
+        self,
+        run_id: str,
+        attempt: int,
+        contract: TaskContract,
+        proposal: Proposal,
+        gate_results: tuple[GateResult, ...],
+        repair_policy: RuleAwareRepairPolicy | None,
+    ) -> tuple[Proposal, tuple[GateResult, ...]]:
+        # Each accepted scoped step strictly removes visible failure atoms.
+        # The semantic language permits at most MAX_ASSERTIONS rules; retain
+        # that independent hard ceiling even for custom gate implementations.
+        # Legacy contracts retain their single all-gates-passing repair.
+        step_limit = MAX_ASSERTIONS if repair_policy is not None else 1
+        fingerprints = {proposal.fingerprint()}
+        for step in range(1, step_limit + 1):
+            if all(result.passed for result in gate_results):
+                break
+            scope = (
+                derive_repair_scope(self.gates, gate_results)
+                if repair_policy is not None else None
+            )
+            if repair_policy is not None and scope is None:
+                break
+            repair = propose_deterministic_semantic_repair(
+                contract,
+                proposal,
+                editable_paths=scope.editable_paths if scope is not None else None,
+            )
+            if repair is None:
+                break
+            candidate = _clone_proposal(repair.proposal)
+            candidate_fingerprint = candidate.fingerprint()
+            results = tuple(gate.evaluate(contract, candidate) for gate in self.gates)
+            self._record(
+                run_id,
+                "gates.evaluated",
+                {
+                    "attempt": attempt,
+                    "source": "deterministic_semantic_repair",
+                    "deterministic_step": step,
+                    "results": [result.to_dict() for result in results],
+                },
+            )
+            assessment = (
+                assess_candidate_changes(proposal, candidate, scope, repair_policy)
+                if repair_policy is not None and scope is not None else None
+            )
+            comparison = compare_failure_sets(
+                gate_results,
+                results,
+                gates=self.gates if repair_policy is not None else None,
+                required_resolved_rule_ids=scope.failed_rule_ids if scope is not None else (),
+            )
+            all_passed = all(result.passed for result in results)
+            accepted = (
+                all_passed if repair_policy is None else (
+                    assessment is not None and assessment.allowed
+                    and comparison.accepted
+                    and candidate_fingerprint not in fingerprints
+                )
+            )
+            event = (
+                "semantic.repair.applied" if all_passed
+                else "semantic.repair.partially_applied"
+            ) if accepted else "semantic.repair.rejected"
+            payload = {
+                "assertion_ids": list(repair.assertion_ids),
+                "result_pointers": list(repair.result_pointers),
+            }
+            if scope is not None:
+                payload.update({
+                    "attempt": attempt,
+                    "deterministic_step": step,
+                    "step_limit": step_limit,
+                    "baseline_fingerprint": proposal.fingerprint(),
+                    "candidate_fingerprint": candidate_fingerprint,
+                })
+                payload["repair_scope"] = scope.to_dict()
+                payload.update(comparison.to_dict())
+                payload["change_assessment"] = assessment.to_dict()
+                if not assessment.allowed:
+                    payload["reason_code"] = assessment.reason_code
+                elif candidate_fingerprint in fingerprints:
+                    payload["reason_code"] = "repair.no_progress"
+            self._record(run_id, event, payload)
+            if not accepted:
+                break
+            fingerprints.add(candidate_fingerprint)
+            proposal, gate_results = candidate, results
+        return proposal, gate_results
 
     def _record_retry(
         self,
