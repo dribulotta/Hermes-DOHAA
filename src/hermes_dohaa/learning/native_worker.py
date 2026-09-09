@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import shadow
+from .native_progress import ProgressWriter
 from .native_prompt import (FAILURE_CODES, MAX_WIRE, MAX_RESPONSE_WIRE, MAX_WORKER_TRACE,
                             NativePromptError, native_bridge_sha256, parse_wire_response,
                             prompt_frame, validate_native_policy, validate_request, validate_wire_request)
@@ -39,13 +40,20 @@ def profile_checks(agent):
 
 
 class Guard:
-    def __init__(self, policy, logical, api_key):
+    def __init__(self, policy, logical, api_key, progress=None):
         self.policy, self.logical, self.api_key = policy, logical, api_key
         self.posts, self.denied, self.metadata = 0, 0, 0
         self.request_bytes = self.response_bytes = b''
         self.server_finished, self.parsed = False, None
         self.response_observed = 0
         self.generation_failure = None
+        self.progress = progress
+
+    def report_progress(self, stage, http_status=None):
+        if self.progress is not None:
+            self.progress.emit(stage, generation_requests=self.posts,
+                request_bytes=len(self.request_bytes), response_bytes_observed=self.response_observed,
+                response_bytes_retained=len(self.response_bytes), http_status=http_status)
 
     def record_failure(self, exc, stage, status, httpx):
         # Preserve the first dispatched-generation failure. Native retries and
@@ -120,8 +128,10 @@ class Guard:
             data = bytearray()
             capture_limit = MAX_RESPONSE_WIRE if generation else MAX_WIRE
             try:
+                owner.report_progress('send' if generation else 'metadata_send')
                 response = original_send(client, request, **kwargs)
                 stage = 'read'
+                owner.report_progress('read' if generation else 'metadata_read', response.status_code)
                 for part in response.iter_bytes():
                     # Retain decoded chunks as they arrive, including a bounded
                     # prefix of an oversized chunk, even when iteration fails.
@@ -130,13 +140,16 @@ class Guard:
                     if generation:
                         owner.response_observed = min(2**63-1, owner.response_observed + len(part))
                         owner.response_bytes = bytes(data)
+                        owner.report_progress('read', response.status_code)
                     if len(part) > remaining:
                         raise NativePromptError('native_shadow.wire_limit')
                 if generation:
                     stage = 'http_status'
+                    owner.report_progress(stage, response.status_code)
                     if response.status_code != 200:
                         raise NativePromptError('native_shadow.http_status')
                     stage = 'parse'
+                    owner.report_progress(stage, response.status_code)
                     owner.parsed = parse_wire_response(bytes(data), owner.policy['model'])
             except Exception as exc:
                 failed = True
@@ -154,6 +167,7 @@ class Guard:
                             raise
             if generation:
                 owner.server_finished = True
+                owner.report_progress('guard_returned', response.status_code)
             headers = {key: value for key, value in response.headers.items()
                        if key.lower() not in {'content-encoding', 'content-length', 'transfer-encoding'}}
             return httpx.Response(response.status_code, headers=headers, content=bytes(data), request=request)
@@ -179,7 +193,12 @@ def execute(config):
     profile = Path(config['profile']).resolve()
     if Path.cwd() != profile or os.environ.get('HERMES_HOME') != str(profile):
         raise NativePromptError('native_shadow.worker_profile')
-    guard = Guard(policy, request, config['api_key'])
+    progress = ProgressWriter(config.get('progress_fd'),
+        {'request_sha256': config['request_sha256'],
+         'runtime_policy_sha256': config['runtime_policy_sha256'],
+         'bridge_sha256': policy['bridge_sha256']}, policy['worker_timeout_seconds'] * 1000)
+    guard = Guard(policy, request, config['api_key'], progress)
+    guard.report_progress('setup')
     guard.install()
     import yaml
     from toolsets import TOOLSETS
@@ -222,10 +241,12 @@ def execute(config):
         result['profile_passed'] = profile_checks(agent) and agent.model == policy['model']
         if not result['profile_passed']:
             raise NativePromptError('native_shadow.profile_rejected')
+        guard.report_progress('agent_ready')
         native_result = agent.run_conversation(user_message=request['input'], conversation_history=[])
     except Exception:
         result['native_error'] = True
     finally:
+        guard.report_progress('native_returned')
         if adapter._session_db is not None:
             adapter._session_db.close()
     native_completed = (isinstance(native_result, dict) and not native_result.get('failed')
@@ -239,6 +260,7 @@ def execute(config):
                   generation_failure=guard.generation_failure,
                   wire_request_base64=base64.b64encode(guard.request_bytes).decode('ascii'),
                   wire_response_base64=base64.b64encode(guard.response_bytes).decode('ascii'))
+    progress.close()
     return result
 
 

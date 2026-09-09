@@ -24,6 +24,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from . import collection, shadow
+from .native_progress import MAX_PROGRESS_BYTES, ProgressChannel
 
 MAX_WIRE = 512 * 1024
 # SSE repeats framing for each delta; its response needs a separate bound from
@@ -76,7 +77,8 @@ def native_adapter_sha256():
 
 
 def native_bridge_sha256():
-    paths = (Path(__file__), Path(__file__).with_name('native_worker.py'))
+    paths = (Path(__file__), Path(__file__).with_name('native_worker.py'),
+             Path(__file__).with_name('native_progress.py'))
     return shadow._hash(shadow._canonical({p.name: shadow._hash(p.read_bytes().replace(b'\r\n', b'\n'))
                                           for p in paths}))
 
@@ -315,7 +317,7 @@ class NativePromptAdapter:
         current = self._catalog()
         if set(current) != self.owned or any(model != self.policy['model'] for model in current.values()):
             raise NativePromptError('native_shadow.residency_changed')
-        if self.trace_bytes + MAX_WORKER_TRACE > MAX_TRACE:
+        if self.trace_bytes + MAX_WORKER_TRACE + MAX_PROGRESS_BYTES > MAX_TRACE:
             raise NativePromptError('native_shadow.trace_budget')
         profile = self.worker_root / ('profile-' + str(self.calls))
         profile.mkdir(mode=0o700)
@@ -333,14 +335,22 @@ class NativePromptAdapter:
             'HERMES_DISABLE_TELEMETRY': '1'}
         self.state = 'uncertain'
         self.calls += 1
+        progress = ProgressChannel(
+            {'request_sha256': configuration['request_sha256'],
+             'runtime_policy_sha256': self.runtime_policy_sha256,
+             'bridge_sha256': self.policy['bridge_sha256']},
+            self.policy['worker_timeout_seconds'] * 1000)
         try:
-            with receipt_path.open('xb') as out, log_path.open('xb') as log:
+            with progress, receipt_path.open('xb') as out, log_path.open('xb') as log:
+                configuration['progress_fd'] = progress.child_fd
                 os.fchmod(out.fileno(), 0o600)
                 os.fchmod(log.fileno(), 0o600)
                 process = subprocess.Popen([str(self.python), '-P', '-m', 'hermes_dohaa.learning.native_worker'],
                     stdin=subprocess.PIPE, stdout=out, stderr=log, cwd=profile, env=environment,
                     user=self.policy['worker_uid'], group=self.policy['worker_gid'], extra_groups=[],
-                    umask=0o077, close_fds=True, start_new_session=True)
+                    umask=0o077, close_fds=True, start_new_session=True,
+                    pass_fds=(progress.child_fd,) if progress.child_fd is not None else ())
+                progress.close_parent_writer()
                 try:
                     process.communicate(shadow._canonical(configuration), timeout=self.policy['worker_timeout_seconds'])
                 except (subprocess.TimeoutExpired, KeyboardInterrupt):
@@ -350,6 +360,17 @@ class NativePromptAdapter:
                 out.flush()
                 os.fsync(out.fileno())
         finally:
+            # Diagnostic hints never substitute for the terminal trace below.
+            # A failed diagnostic write cannot change a generation's verdict.
+            self.last_progress = progress.summary()
+            try:
+                raw_progress = shadow._canonical(self.last_progress)
+                if len(raw_progress) <= MAX_PROGRESS_BYTES:
+                    shadow._publish(self.evidence_dir / f'worker-{self.calls - 1:04d}.progress', raw_progress)
+                    self.trace_bytes += len(raw_progress)
+            except Exception:
+                self.last_progress = {'status': 'storage_unavailable', 'authoritative': False,
+                                      'server_completion_verified': False}
             # The code-only parent is root-owned and not worker-writable, so the
             # worker cannot replace this directory entry. Seal its history from
             # subsequent workers without following or modifying its child links.
