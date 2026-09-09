@@ -25,6 +25,7 @@ from urllib.parse import urlsplit
 
 from . import collection, shadow
 from .native_progress import MAX_PROGRESS_BYTES, ProgressChannel
+from .native_response_format import response_format_for_policy
 
 MAX_WIRE = 512 * 1024
 # SSE repeats framing for each delta; its response needs a separate bound from
@@ -78,18 +79,25 @@ def native_adapter_sha256():
 
 def native_bridge_sha256():
     paths = (Path(__file__), Path(__file__).with_name('native_worker.py'),
-             Path(__file__).with_name('native_progress.py'))
+             Path(__file__).with_name('native_progress.py'),
+             Path(__file__).with_name('native_response_format.py'))
     return shadow._hash(shadow._canonical({p.name: shadow._hash(p.read_bytes().replace(b'\r\n', b'\n'))
                                           for p in paths}))
 
 
 def validate_native_policy(data: bytes, expected_sha256: str):
     policy = shadow._json(data, expected_sha256)
-    shadow._fields(policy, {'schema_version', 'native_commit', 'bridge_sha256', 'model', 'endpoint',
+    fields = {'schema_version', 'native_commit', 'bridge_sha256', 'model', 'endpoint',
         'reasoning_effort', 'seed', 'temperature', 'top_p', 'max_tokens', 'request_timeout_seconds',
-        'worker_timeout_seconds', 'request_limit', 'worker_uid', 'worker_gid', 'exclusive_backend'})
-    if (policy['schema_version'] != 'hermes-native-shadow-policy/1.0'
-            or policy['bridge_sha256'] != native_bridge_sha256()
+        'worker_timeout_seconds', 'request_limit', 'worker_uid', 'worker_gid', 'exclusive_backend'}
+    if policy.get('schema_version') == 'hermes-native-shadow-policy/1.1':
+        fields.add('response_contract')
+    shadow._fields(policy, fields)
+    try:
+        response_format_for_policy(policy)
+    except ValueError as exc:
+        raise NativePromptError('native_shadow.policy_invalid') from exc
+    if (policy['bridge_sha256'] != native_bridge_sha256()
             or policy['exclusive_backend'] is not True
             or type(policy['native_commit']) is not str
             or re.fullmatch('[0-9a-f]{40}', policy['native_commit']) is None
@@ -142,6 +150,9 @@ def validate_wire_request(data: bytes, logical: dict[str, Any], policy: dict[str
     raw = shadow._json(data, shadow._hash(data))
     expected = {name: policy[name] for name in ('model', 'reasoning_effort', 'seed',
                                               'temperature', 'top_p', 'max_tokens')}
+    response_format = response_format_for_policy(policy)
+    if response_format is not None:
+        expected['response_format'] = response_format
     allowed = set(expected) | {'messages', 'stream', 'stream_options', 'tools', 'tool_choice', 'think'}
     if (any(name not in raw or not shadow._equal(raw[name], value) for name, value in expected.items())
             or set(raw) - allowed or type(raw.get('stream')) is not bool
