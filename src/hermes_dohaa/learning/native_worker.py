@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 from . import shadow
 from .native_progress import ProgressWriter
+from .native_response_format import native_request_overrides
 from .native_prompt import (FAILURE_CODES, MAX_WIRE, MAX_RESPONSE_WIRE, MAX_WORKER_TRACE,
                             NativePromptError, native_bridge_sha256, parse_wire_response,
                             prompt_frame, validate_native_policy, validate_request, validate_wire_request)
@@ -235,7 +236,7 @@ def execute(config):
             ephemeral_system_prompt=prompt_frame(request), session_id=request['request_id'])
         agent.max_tokens = policy['max_tokens']
         agent.skip_background_review = True
-        agent.request_overrides = {key: policy[key] for key in ('seed', 'temperature', 'top_p')}
+        agent.request_overrides = native_request_overrides(policy)
         agent._handle_max_iterations = guard.deny_summary
         result['agent_class'] = type(agent).__name__
         result['profile_passed'] = profile_checks(agent) and agent.model == policy['model']
