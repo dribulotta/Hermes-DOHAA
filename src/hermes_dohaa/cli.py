@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Sequence
 
 from hermes_dohaa import __version__
-from hermes_dohaa.assurance.evidence_policy import parse_evidence_policy
+from hermes_dohaa.assurance.evidence_policy import parse_contract_evidence_policy
 from hermes_dohaa.assurance.gates import (
     ActionPolicyGate,
     ClaimEvidenceGate,
@@ -315,7 +315,7 @@ def _contract_gates(contract: TaskContract):
 def _validate_contract_gate_inputs(contract: TaskContract) -> None:
     if "evidence_policy" in contract.inputs:
         try:
-            parse_evidence_policy(contract.inputs["evidence_policy"])
+            parse_contract_evidence_policy(contract)
         except ValueError as exc:
             raise ValueError(f"invalid evidence_policy: {exc}") from exc
     if "result_spec" in contract.inputs:

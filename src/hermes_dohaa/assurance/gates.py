@@ -10,7 +10,7 @@ from typing import Any, Mapping, Protocol
 import json
 
 from hermes_dohaa.contracts.models import TaskContract
-from hermes_dohaa.assurance.evidence_policy import check_evidence_policy, parse_evidence_policy
+from hermes_dohaa.assurance.evidence_policy import check_evidence_policy, parse_contract_evidence_policy
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
 from hermes_dohaa.assurance.result_spec import json_equal, parse_result_spec, validate_result
 from hermes_dohaa.assurance.semantic_assertions import (
@@ -174,7 +174,7 @@ class ClaimEvidenceGate:
         policy = None
         if "evidence_policy" in contract.inputs:
             try:
-                policy = parse_evidence_policy(contract.inputs["evidence_policy"])
+                policy = parse_contract_evidence_policy(contract)
             except (ValueError, TypeError, RecursionError):
                 return GateResult(
                     self.name, False, "Contract evidence policy is invalid",

@@ -17,6 +17,7 @@ from hermes_dohaa.assurance.semantic_assertions import (
     SemanticEvaluationError, _resolve_pointer, _validate_pointer,
 )
 from hermes_dohaa.runtime.base import Proposal
+from hermes_dohaa.contracts.models import TaskContract
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,13 +67,34 @@ def parse_evidence_policy(raw: Any) -> EvidencePolicy:
         evidence_id = _text(item["evidence_id"], 128)
         if evidence_id not in ids:
             raise ValueError("claim binding must reference a committed source")
+        prefix = _text(item["prefix"], 512, literal=True)
+        suffix = _text(item["suffix"], 512, literal=True)
+        # Proposal.from_dict strips statement edges. Preserve separators next
+        # to the canonical value, but reject policies whose outer edges change.
+        if (prefix and prefix[0].isspace()) or (suffix and suffix[-1].isspace()):
+            raise ValueError("generated claim statement cannot have outer whitespace")
         claims.append(ClaimBinding(
             evidence_id, _pointer(item["evidence_pointer"]), _pointer(item["result_pointer"]),
-            _text(item["prefix"], 512, literal=True), _text(item["suffix"], 512, literal=True),
+            prefix, suffix,
         ))
     if len(set(claims)) != len(claims):
         raise ValueError("claim bindings must be unique")
     return EvidencePolicy(tuple(sources), tuple(claims))
+
+
+def parse_contract_evidence_policy(contract: TaskContract) -> EvidencePolicy | None:
+    """Use the same admission checks at CLI, evaluation and runtime boundaries."""
+    if "evidence_policy" not in contract.inputs:
+        return None
+    policy = parse_evidence_policy(contract.inputs["evidence_policy"])
+    required = {
+        evidence_id
+        for criterion in contract.acceptance_criteria
+        for evidence_id in criterion.required_evidence
+    }
+    if not required <= {source.evidence_id for source in policy.sources}:
+        raise ValueError("required evidence must belong to the committed source set")
+    return policy
 
 
 def check_evidence_policy(policy: EvidencePolicy, proposal: Proposal) -> str | None:
