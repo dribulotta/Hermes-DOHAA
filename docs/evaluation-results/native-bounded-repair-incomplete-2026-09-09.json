@@ -1,0 +1,78 @@
+{
+  "audit": {
+    "executor_exit_code": 2,
+    "full_decision_reconstruction_performed": false,
+    "generation_counter_is_dispatch_accounting_in_incomplete_audit": true,
+    "partial_quality_scores_published_as_validated": false,
+    "status": "incomplete",
+    "supervisor_final_audit_exit_code": 2
+  },
+  "automatic_replacement_campaign_started": false,
+  "closed_at": "2026-09-09T00:43:42.704587+00:00",
+  "complete_external_preregistration_retained_before_launch": true,
+  "documentation_issue": 63,
+  "elapsed_seconds": 2134.958,
+  "execution_attested": false,
+  "frozen_files_unchanged": true,
+  "installed_source_unchanged": true,
+  "interpretation": "The scheduling regression is separately covered by synthetic tests. This incomplete native run establishes neither superiority nor equivalence nor lack of benefit. Missing configurations are not zeros. No persistent learning claim.",
+  "late_cleanup": {
+    "empty_after": true,
+    "exact_owned_model_only": true,
+    "missing_historical_receipt_recovered": false,
+    "model_idle_verified": true,
+    "no_intervening_model_use_verified": true,
+    "owned_processes_absent": true,
+    "performed_at": "2026-09-09T01:19:18.444535+00:00",
+    "unload_exit_code": 0,
+    "zero_queued_requests_verified": true
+  },
+  "manifest_sha256": "d282bf70c567bcfdd38267ae94980a7c353e8dc4bba7cef2f92e5171d4755ce2",
+  "native_commit": "f4e8eb156876a27687a9bc7db0e1b6343a9c35c0",
+  "observed": {
+    "actual_server_generation_count_fully_verified": false,
+    "configuration_rows": 77,
+    "failed_model": "qwen3.6-27b-mtp",
+    "failed_reasoning_mode": "medium",
+    "failure_code": "native_shadow.worker_timeout",
+    "four_finished_blocks_exact_unload_confirmed": true,
+    "interrupted_block_cleanup_confirmed_at_abort": false,
+    "last_worker_trace_bytes": 0,
+    "missing_terminal_receipts": 1,
+    "request_dispatch_records": 78,
+    "terminal_clock_records": 77,
+    "terminal_receipts": 77,
+    "unobserved_configurations": 211,
+    "worker_timeout_seconds": 210
+  },
+  "planned": {
+    "cases": 48,
+    "client_concurrency": 1,
+    "configurations": 288,
+    "max_tokens": 8192,
+    "maximum_actual_requests": 864,
+    "maximum_generations_per_arm": 2,
+    "models": 3,
+    "reasoning_modes": [
+      "none",
+      "medium"
+    ]
+  },
+  "production_activated": false,
+  "protocol_sha256": "d72336274205cf0cc60c2711aebc5b2bfb216284ad391bddfda043ce80845d80",
+  "related_correction_pr": 62,
+  "replay_or_rescore_performed": false,
+  "root_cause": "unresolved",
+  "schema_version": "hermes-native-bounded-repair-outcome/1.0",
+  "services_unchanged": true,
+  "source_commit": "9dd7578b3f9134270df532b51cb425862dc5910b",
+  "source_tree": "43c2f5d2e532181953dda17cb35d6f2de7a7001d",
+  "started_at": "2026-09-09T00:08:07.014251+00:00",
+  "status": "closed_incomplete",
+  "verdict": "incomplete_no_architecture_conclusion",
+  "zero_llm_visible_reference": {
+    "cases": 48,
+    "correct": 48,
+    "real_model_requests": 0
+  }
+}
