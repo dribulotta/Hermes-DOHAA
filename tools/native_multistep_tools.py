@@ -317,14 +317,28 @@ class MultistepCollector:
                 matching.append(trace)
         if len(matching) != 1:
             raise Conflict('unique_native_trace_required')
-        response = json.loads(base64.b64decode(matching[0]['wire_response_base64'], validate=True))
-        usage = response.get('usage')
-        if usage is None:
-            return None
+        wire = base64.b64decode(matching[0]['wire_response_base64'], validate=True)
+        # Recheck complete framing/identity before reading optional accounting.
+        # SSE chunks are cumulative reports, never independent token charges.
+        native.parse_wire_response(wire, self.bridge.policy['model'])
+        if wire.lstrip().startswith(b'data:'):
+            documents = [json.loads(line[5:].strip()) for line in wire.splitlines()
+                         if line.strip() and line[5:].strip() != b'[DONE]']
+        else:
+            documents = [json.loads(wire)]
         keys = ('prompt_tokens', 'completion_tokens', 'total_tokens')
-        if type(usage) is not dict or any(type(usage.get(k)) is not int or usage[k] < 0 for k in keys):
-            return None
-        return {key: usage[key] for key in keys}
+        reported = None
+        for document in documents:
+            usage = document.get('usage')
+            if usage is None:
+                continue
+            if type(usage) is not dict or any(type(usage.get(k)) is not int or usage[k] < 0 for k in keys):
+                return None
+            current = {key: usage[key] for key in keys}
+            if reported is not None and current != reported:
+                return None  # Conflicting counters are unmeasured, not summed.
+            reported = current
+        return reported
 
     def _correct(self, case, result):
         expected = case['expected']
