@@ -7,7 +7,7 @@ import base64
 from pathlib import Path
 
 from hermes_dohaa.learning import native_prompt as native,shadow
-from hermes_dohaa.learning.native_reasoning import binary_reasoning, selector_profile
+from hermes_dohaa.learning.native_reasoning import binary_reasoning, compatibility_reasoning, selector_profile
 
 MAX_DOCUMENT_BYTES=1024*1024
 MAX_TASKS=256
@@ -101,7 +101,7 @@ def _profiles(raw,expected_sha256):
     library=_document(raw,expected_sha256)
     shadow._fields(library,{'schema_version','profiles'})
     version=library['schema_version']
-    if version not in ('hermes-reasoning-profiles/1.0','hermes-reasoning-profiles/1.1'):
+    if version not in ('hermes-reasoning-profiles/1.0','hermes-reasoning-profiles/1.1','hermes-reasoning-profiles/1.2'):
         raise ValueError('profile_library_version_required')
     shadow._fields(library['profiles'],set(PROFILES))
     policies={};identities={};common=None
@@ -110,10 +110,13 @@ def _profiles(raw,expected_sha256):
         policy=native.validate_native_policy(data,encoded['document_sha256'])
         if 'context_length' not in policy or 'response_contract' not in policy:
             raise ValueError('explicit_context_and_contract_required')
-        if binary_reasoning(policy)!=(version=='hermes-reasoning-profiles/1.1'):
+        if (binary_reasoning(policy)!=(version!='hermes-reasoning-profiles/1.0')
+                or compatibility_reasoning(policy)!=(version=='hermes-reasoning-profiles/1.2')):
             raise ValueError('profile_mode_version_mismatch')
         if selector_profile(policy)!=name:raise ValueError('profile_mode_mismatch')
-        shared=shadow._canonical({key:value for key,value in policy.items() if key not in ('reasoning_effort','max_tokens')})
+        factors={'reasoning_effort','max_tokens'}
+        if compatibility_reasoning(policy):factors.add('reasoning_intent')
+        shared=shadow._canonical({key:value for key,value in policy.items() if key not in factors})
         if common is not None and shared!=common:raise ValueError('profile_nonfactor_settings_changed')
         common=shared;policies[name]=policy;identities[name]=encoded['document_sha256']
     return policies,identities
@@ -174,9 +177,13 @@ def build_plan(*,workload_bytes,workload_sha256,profiles_bytes,profiles_sha256,r
             public_input_sha256=d['public_input_sha256'],features_sha256=shadow._hash(features_raw),profile=choice,
             profile_sha256=profile_ids[choice],matched_rule=matched,max_tokens=policy['max_tokens'],
             planned_request_ids=d['planned_request_ids'],reserved_generation_tokens=allowance))
-        if binary_reasoning(policy):
+        if compatibility_reasoning(policy):
+            entries[-1].update(reasoning_mode=policy['reasoning_intent'],reasoning_effort=policy['reasoning_effort'],
+                               on_depends_on_declared_default=policy['reasoning_intent']=='on')
+        elif binary_reasoning(policy):
             entries[-1]['reasoning_mode']=policy['reasoning_effort']
-    version='hermes-reasoning-budget-plan/1.1' if binary_reasoning(policy) else 'hermes-reasoning-budget-plan/1.0'
+    version=('hermes-reasoning-budget-plan/1.2' if compatibility_reasoning(policy) else
+             'hermes-reasoning-budget-plan/1.1' if binary_reasoning(policy) else 'hermes-reasoning-budget-plan/1.0')
     return shadow._canonical(dict(schema_version=version,source_sha256=source_sha256(),
         workload_sha256=workload_sha256,profiles_sha256=profiles_sha256,rules_sha256=rules_sha256,strategy=strategy,
         token_ceiling=token_ceiling,reserved_generation_tokens=reserved,remaining_generation_tokens=token_ceiling-reserved,
