@@ -313,7 +313,7 @@ def derive_repair_scope(
     """Select one isolated repair unit, ignoring explicit oracle-only gates.
 
     Every non-oracle failure must advertise a valid scope.  Disjoint scopes are
-    handled on later attempts; overlapping scopes are closed together so a
+    handled in subsequent repair units; overlapping scopes are closed together so a
     candidate cannot change a field shared by an untargeted failing gate.
     """
     if len(gates) != len(results):

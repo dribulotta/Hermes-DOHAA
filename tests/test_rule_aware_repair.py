@@ -682,9 +682,11 @@ class RuleAwareRepairTests(unittest.TestCase):
 
         self.assertEqual(result.status, RunStatus.SUCCEEDED)
         self.assertEqual(result.proposal.result, {"first": 1, "second": 2})
+        self.assertEqual(runtime.repair_calls, [])
         self.assertEqual(
-            runtime.repair_calls[0][0].result,
-            {"first": 1, "second": 0},
+            [event.payload["result_pointers"] for event in events
+             if event.event_type in ("semantic.repair.partially_applied", "semantic.repair.applied")],
+            [["/first"], ["/second"]],
         )
         self.assertTrue(
             any(
