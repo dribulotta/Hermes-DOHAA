@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "synthetic-bound-stock",
+  "objective": "Report stock from the supplied synthetic source. Match the fixed claim format and source commitment.",
+  "inputs": {
+    "source_records": {
+      "source-1": {
+        "stock": 29
+      }
+    },
+    "evidence_policy": {
+      "schema_version": "1.0",
+      "sources": [
+        {
+          "evidence_id": "source-1",
+          "kind": "artifact",
+          "source": "synthetic-inventory",
+          "sha256": "41f1dd2f155608dce1f2f6edb343b4fda94f4485fec0e98dba6d79c9b8c49fbb"
+        }
+      ],
+      "claims": [
+        {
+          "evidence_id": "source-1",
+          "evidence_pointer": "/stock",
+          "result_pointer": "/stock",
+          "prefix": "Stock is ",
+          "suffix": "."
+        }
+      ]
+    },
+    "result_spec": {
+      "required_keys": [
+        "stock"
+      ],
+      "additional_keys": false,
+      "types": {
+        "stock": "integer"
+      }
+    },
+    "semantic_assertions": [
+      {
+        "assertion_id": "stock.matches.source.record",
+        "operator": "equals",
+        "left": {
+          "op": "ref",
+          "source": "result",
+          "pointer": "/stock"
+        },
+        "right": {
+          "op": "ref",
+          "source": "inputs",
+          "pointer": "/source_records/source-1/stock"
+        }
+      }
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "criterion_id": "bound-stock",
+      "description": "Report the committed stock with an exact source-bound factual claim.",
+      "required_evidence": [
+        "source-1"
+      ]
+    }
+  ],
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "shell.execute"
+  ],
+  "risk_level": "low",
+  "max_attempts": 2,
+  "requires_human_approval": false
+}

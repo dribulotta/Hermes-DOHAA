@@ -1,0 +1,169 @@
+{
+  "assessment": "supported_in_this_matrix",
+  "trials": 144,
+  "conditions": 432,
+  "unique_cases": 24,
+  "templates": 12,
+  "successes": {
+    "direct": 104,
+    "self_reflection": 106,
+    "dohaa": 144
+  },
+  "utility_criteria": {
+    "mean_gain_at_least_5_percentage_points": true,
+    "no_negative_model_mode_cell": true,
+    "at_least_two_models_with_positive_gain": true
+  },
+  "reliability_criteria": {
+    "zero_dohaa_incorrect_accepted": true,
+    "zero_dohaa_actions_accepted": true,
+    "zero_dohaa_runtime_failures": true,
+    "all_ledgers_valid": true
+  },
+  "validity": {
+    "all_144_trials_saved": true,
+    "all_source_and_frozen_hashes_match": true,
+    "independent_scores_agree": true,
+    "wire_response_hashes_match": true,
+    "actual_parameters_verified": true,
+    "requested_and_response_model_ids_match": true,
+    "reasoning_off_has_zero_reasoning_characters": true,
+    "reasoning_on_observed_for_each_model": true,
+    "no_tool_messages": true,
+    "all_agents_restricted": true,
+    "no_unexpected_posts": true,
+    "no_budget_or_safety_stop": true,
+    "actual_wire_parameters_recounted": true,
+    "generation_request_caps_and_counts_match": true,
+    "denied_generations_retained_as_failures": true,
+    "all_sent_requests_have_complete_terminal_responses": true,
+    "synchronous_model_unload_order_verified": true
+  },
+  "actual_model_requests": 290,
+  "elapsed_seconds": 4610.64,
+  "ledger_count": 144,
+  "source_commit": "1b848e9ded18c6a2f05229ed3b259ee379753cc1",
+  "protocol_sha256": "a6d3192056bdbea90879527e0be4ec28cea83b2c92e1c2092fdb30f6e5249435",
+  "suite_sha256": "52afef9deb3b380aefa3fa609907a600930177ae3a91d9532ba05958499b222c",
+  "expected_generation_budget_stops": 2,
+  "native_failure_codes": {
+    "trial.generation_budget_exhausted": 2
+  },
+  "cells": [
+    {
+      "model": "qwen3.6-27b-mtp",
+      "mode": "none",
+      "cases": 24,
+      "successes": {
+        "direct": 12,
+        "self_reflection": 11,
+        "dohaa": 24
+      },
+      "dohaa_vs_reflection_wins": 13,
+      "dohaa_vs_reflection_losses": 0,
+      "dohaa_incorrect_accepted": 0
+    },
+    {
+      "model": "qwen3.6-27b-mtp",
+      "mode": "medium",
+      "cases": 24,
+      "successes": {
+        "direct": 24,
+        "self_reflection": 24,
+        "dohaa": 24
+      },
+      "dohaa_vs_reflection_wins": 0,
+      "dohaa_vs_reflection_losses": 0,
+      "dohaa_incorrect_accepted": 0
+    },
+    {
+      "model": "qwen/qwen3.6-35b-a3b",
+      "mode": "none",
+      "cases": 24,
+      "successes": {
+        "direct": 10,
+        "self_reflection": 13,
+        "dohaa": 24
+      },
+      "dohaa_vs_reflection_wins": 11,
+      "dohaa_vs_reflection_losses": 0,
+      "dohaa_incorrect_accepted": 0
+    },
+    {
+      "model": "qwen/qwen3.6-35b-a3b",
+      "mode": "medium",
+      "cases": 24,
+      "successes": {
+        "direct": 24,
+        "self_reflection": 23,
+        "dohaa": 24
+      },
+      "dohaa_vs_reflection_wins": 1,
+      "dohaa_vs_reflection_losses": 0,
+      "dohaa_incorrect_accepted": 0
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-qat",
+      "mode": "none",
+      "cases": 24,
+      "successes": {
+        "direct": 10,
+        "self_reflection": 12,
+        "dohaa": 24
+      },
+      "dohaa_vs_reflection_wins": 12,
+      "dohaa_vs_reflection_losses": 0,
+      "dohaa_incorrect_accepted": 0
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-qat",
+      "mode": "medium",
+      "cases": 24,
+      "successes": {
+        "direct": 24,
+        "self_reflection": 23,
+        "dohaa": 24
+      },
+      "dohaa_vs_reflection_wins": 1,
+      "dohaa_vs_reflection_losses": 0,
+      "dohaa_incorrect_accepted": 0
+    }
+  ],
+  "by_reasoning_mode": {
+    "none": {
+      "direct": 32,
+      "self_reflection": 36,
+      "dohaa": 72
+    },
+    "medium": {
+      "direct": 72,
+      "self_reflection": 70,
+      "dohaa": 72
+    }
+  },
+  "deterministic_repair_events": 44,
+  "trials_with_deterministic_repair": 44,
+  "extra_dohaa_model_requests": 2,
+  "deterministic_only_baseline": {
+    "formula_cases": 18,
+    "formula_successes": 18,
+    "bound_source_cases_outside_scope": 6,
+    "real_model_requests": 0
+  },
+  "status": "unreleased_development_integration",
+  "integrated_pull_requests": [
+    42,
+    44,
+    46,
+    47
+  ],
+  "limits": [
+    "24 authored synthetic cases; variants and shared initial proposals are dependent observations.",
+    "All tasks have explicit contract-visible formula or source-binding verifiers. No hidden scoring reference is fed back.",
+    "Reasoning-enabled direct model already solves72/72; no direct-model accuracy gain in that mode.",
+    "Deterministic baseline solves all18formula cases without a model; this does not establish learning or model necessity.",
+    "Private response bytes and ledgers are retained outside this aggregate publication; automated independent recount is not external peer review.",
+    "Prior invalid campaign remains unchanged; this new run changes cases, coverage, seed and common token budget.",
+    "No deployment, V5 publication, automatic candidate activation, persistent learning or real actuation."
+  ]
+}

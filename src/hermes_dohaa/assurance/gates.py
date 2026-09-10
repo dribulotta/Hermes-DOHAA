@@ -10,6 +10,7 @@ from typing import Any, Mapping, Protocol
 import json
 
 from hermes_dohaa.contracts.models import TaskContract
+from hermes_dohaa.assurance.evidence_policy import check_evidence_policy, parse_contract_evidence_policy
 from hermes_dohaa.runtime.base import Proposal, VerifierFeedback
 from hermes_dohaa.assurance.result_spec import json_equal, parse_result_spec, validate_result
 from hermes_dohaa.assurance.semantic_assertions import (
@@ -36,6 +37,9 @@ class GateFailureCode(StrEnum):
     EVIDENCE_REFERENCE_MISSING = "evidence.reference_missing"
     EVIDENCE_CLAIM_UNSUPPORTED = "evidence.claim_unsupported"
     EVIDENCE_REQUIRED_MISSING = "evidence.required_missing"
+    EVIDENCE_POLICY_INVALID = "evidence.policy_invalid"
+    EVIDENCE_BINDING_MISMATCH = "evidence.binding_mismatch"
+    EVIDENCE_CLAIM_BINDING_MISMATCH = "evidence.claim_binding_mismatch"
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +171,15 @@ class ClaimEvidenceGate:
     name: str = "claim_evidence"
 
     def evaluate(self, contract: TaskContract, proposal: Proposal) -> GateResult:
-        del contract
+        policy = None
+        if "evidence_policy" in contract.inputs:
+            try:
+                policy = parse_contract_evidence_policy(contract)
+            except (ValueError, TypeError, RecursionError):
+                return GateResult(
+                    self.name, False, "Contract evidence policy is invalid",
+                    failure_code=GateFailureCode.EVIDENCE_POLICY_INVALID,
+                )
         identifiers = [
             item.evidence_id
             for item in proposal.evidence
@@ -209,6 +221,17 @@ class ClaimEvidenceGate:
                 False,
                 "Every claim must reference at least one evidence item",
                 failure_code=GateFailureCode.EVIDENCE_CLAIM_UNSUPPORTED,
+            )
+        if policy is not None:
+            failure = check_evidence_policy(policy, proposal)
+            if failure is not None:
+                return GateResult(
+                    self.name, False, "Proposal does not satisfy contract-owned evidence bindings",
+                    failure_code=failure,
+                )
+            return GateResult(
+                self.name, True, "Evidence and factual claims match contract-owned bindings",
+                tuple(sorted(available)),
             )
         return GateResult(self.name, True, "Every claim references available evidence", tuple(sorted(available)))
 

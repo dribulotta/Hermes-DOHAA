@@ -1,0 +1,96 @@
+{
+  "scope": "synthetic development controls; references belong to the test only",
+  "cases": [
+    {
+      "contract_file": "offset-time.contract.json",
+      "reference": {
+        "minutes": 45
+      },
+      "incorrect_results": [
+        {
+          "minutes": 225
+        },
+        {
+          "minutes": -45
+        }
+      ]
+    },
+    {
+      "contract_file": "relational-join.contract.json",
+      "reference": {
+        "total": 117
+      },
+      "incorrect_results": [
+        {
+          "total": 177
+        },
+        {
+          "total": 108
+        }
+      ]
+    },
+    {
+      "contract_file": "source-selection.contract.json",
+      "reference": {
+        "revision": 7,
+        "stock": 37
+      },
+      "incorrect_results": [
+        {
+          "revision": 9,
+          "stock": 900
+        },
+        {
+          "revision": 7,
+          "stock": 40
+        }
+      ]
+    },
+    {
+      "contract_file": "stable-dedup.contract.json",
+      "reference": {
+        "ids": [
+          "R5",
+          "R2",
+          "R8"
+        ]
+      },
+      "incorrect_results": [
+        {
+          "ids": [
+            "R2",
+            "R5",
+            "R8"
+          ]
+        },
+        {
+          "ids": [
+            "R5",
+            "R8"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_file": "missing-data.contract.json",
+      "reference": {
+        "status": "insufficient_data",
+        "missing": [
+          "weight_kg"
+        ]
+      },
+      "incorrect_results": [
+        {
+          "status": "insufficient_data",
+          "missing": [
+            "rate_per_kg"
+          ]
+        },
+        {
+          "status": "completed",
+          "missing": []
+        }
+      ]
+    }
+  ]
+}

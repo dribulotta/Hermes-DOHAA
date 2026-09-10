@@ -42,6 +42,10 @@ EXPRESSION_OPERATORS = {
     "sort_by",
     "at",
     "unique",
+    "keys",
+    "difference",
+    "lookup_many",
+    "dot_product",
     "duration_minutes",
     "add_days",
     "add_business_days",
@@ -492,6 +496,9 @@ def _argument_bounds(op: str) -> tuple[int, int]:
         "subtract",
         "divide",
         "filter",
+        "difference",
+        "lookup_many",
+        "dot_product",
         "duration_minutes",
         "add_days",
     }:
@@ -580,6 +587,38 @@ def _evaluate(
                 seen.add(key)
                 result_values.append(item)
         return result_values
+    if op == "keys":
+        mapping = _object(values[0], op)
+        return list(mapping)
+    if op == "difference":
+        collection = _array(values[0], op)
+        excluded = {_strict_key(item) for item in _array(values[1], op)}
+        return [item for item in collection if _strict_key(item) not in excluded]
+    if op == "lookup_many":
+        mapping = _object(values[0], op)
+        keys = _array(values[1], op)
+        selected = []
+        for key in keys:
+            if not isinstance(key, str):
+                raise _type_error(op, "string lookup key", key)
+            if key not in mapping:
+                raise SemanticEvaluationError("collection.lookup_missing", operation=op)
+            selected.append(mapping[key])
+        return selected
+    if op == "dot_product":
+        left = _array(values[0], op)
+        right = _array(values[1], op)
+        if len(left) != len(right):
+            raise SemanticEvaluationError("collection.length_mismatch", operation=op)
+        total = 0
+        for first, second in zip(left, right):
+            _bounded_number(first, op)
+            _bounded_number(second, op)
+            product = first * second
+            _bounded_number(product, op)
+            total += product
+            _bounded_number(total, op)
+        return total
     if op == "duration_minutes":
         start = _timestamp(values[0], op)
         end = _timestamp(values[1], op)
@@ -761,6 +800,15 @@ def _optional_text(
             f"{label} exceeds maximum length {maximum_length}"
         )
     return value.strip()
+
+
+def _object(value: Any, operation: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _type_error(operation, "object", value)
+    _bounded_collection(value, operation)
+    if any(not isinstance(key, str) for key in value):
+        raise SemanticEvaluationError("collection.invalid_object_key", operation=operation)
+    return value
 
 
 def _array(value: Any, operation: str) -> list[Any]:

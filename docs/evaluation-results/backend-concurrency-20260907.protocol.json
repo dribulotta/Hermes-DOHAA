@@ -1,0 +1,39 @@
+{
+  "schema": "lmstudio-concurrency-diagnostic/2.0",
+  "model": "qwen3.6-27b-mtp",
+  "scored_cases": 16,
+  "scored_requests": 32,
+  "warmup_requests": 2,
+  "max_actual_model_requests": 34,
+  "concurrency_levels": [
+    1,
+    4
+  ],
+  "prerequisite": "Existing new native accuracy audit must have all validity criteria true and verified final unload. Verify its 22-file manifest and native cleanup; read live empty LLM catalog. Never overlap with accuracy inference. A failed gate skips this load test with zero generation requests.",
+  "accuracy_protocol_sha256": "a6d3192056bdbea90879527e0be4ec28cea83b2c92e1c2092fdb30f6e5249435",
+  "scope": "Direct LM Studio backend HTTP capacity; no native Hermes agent or DOHAA controller in this workload.",
+  "order": "Six fixed batches: warmup, first eight cases at1 then 4; warmup, last eight at4 then 1. Case order fixed before execution. Same request bytes for each paired case. Two warmups excluded from scored metrics.",
+  "fixed_parameters": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 9072719,
+    "reasoning_effort": "none",
+    "max_tokens": 1024,
+    "request_timeout_seconds": 180,
+    "wall_seconds": 3600
+  },
+  "server_settings": "Read-only snapshots must show one selected instance, configured parallel4, and the same context_length throughout all6batches. JIT loading uses existing settings; do not change them.",
+  "memory": "Single model only. Track all active request tokens; unload exact owned instances after every request has terminated and verify empty catalog. A timeout or response with unknown completion blocks further requests and unload. No claim of GPU residency, GPU timing or absence of competing work.",
+  "scoring": "Independent audit reads retained response bytes, checks hashes, exact response model, no tools or reasoning, terminal stop, and exact64integer sequence with strict integer types. Every planned request remains in denominator. No retries, repeats, best-of choice or removal of failures.",
+  "measurement": "Monotonic complete-request intervals and batch wall time. Mean/p95 per-request latency, batch throughput, peak overlapping client requests, actual returned usage. Client overlap does not prove simultaneous GPU execution.",
+  "validity": "All34requests accounted, exact paired request bytes, response hashes and parameters agree, no time/global/safety stop, same server configuration, complete responses, source/protocol hashes unchanged, actual client overlap4, synchronous final cleanup.",
+  "four_beneficial_criteria": {
+    "all_validity_checks": true,
+    "all_16_outputs_correct_at_each_level": true,
+    "zero_runtime_failures": true,
+    "zero_paired_accuracy_regressions": true,
+    "throughput_ratio_4_over_1_greater_than": 1.1
+  },
+  "conclusion_policy": "four_beneficial_in_this_workload only if every criterion passes. Otherwise distinguish not_demonstrated from invalid_or_incomplete. Report throughput and latency tradeoff even when criterion passes. Small synthetic workload on one model; do not generalize to all contexts, models or DOHAA concurrency safety.",
+  "previous_capacity_test": "Original r4 capacity test remains skipped and immutable. This is a new protocol with new cases, independent audit and mandatory unload."
+}
