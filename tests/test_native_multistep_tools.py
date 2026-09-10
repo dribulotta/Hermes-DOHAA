@@ -21,6 +21,20 @@ from tools.native_model_residency import ResidencyError
 import test_native_tool_evidence as fixtures
 
 
+def streamed_trace(trace, usage_documents=(), *, finish='stop', done=True):
+    """Keep the native proposal, but deliver it in real wire-level SSE framing."""
+    response = json.loads(base64.b64decode(trace['wire_response_base64']))
+    text = response['choices'][0]['message']['content']
+    documents = [dict(model=response['model'], choices=[dict(index=0,
+        delta=dict(role='assistant', content=text), finish_reason=None)], usage=None),
+        dict(model=response['model'], choices=[dict(index=0, delta={}, finish_reason=finish)])]
+    documents.extend(dict(model=response['model'], choices=[], usage=usage) for usage in usage_documents)
+    raw = b''.join(b'data: ' + shadow._canonical(document) + b'\n\n' for document in documents)
+    if done:
+        raw += b'data: [DONE]\n\n'
+    trace['wire_response_base64'] = base64.b64encode(raw).decode()
+
+
 @unittest.skipUnless(os.name=='posix' and os.geteuid()==0,'privileged multi-step evidence')
 class MultistepTests(unittest.TestCase):
     def setUp(self):
@@ -88,6 +102,136 @@ class MultistepTests(unittest.TestCase):
         self.assertEqual((result['scheduled_steps'],result['terminal_receipts'],result['completed_steps']),(2,2,2))
         self.assertEqual(self.f.tool.inventory('widget')['available'],10)
         self.assertTrue(result['exact_unload']);self.assertEqual(self.f.sends,2)
+
+    def test_streamed_two_step_flow_completes_and_unloads_with_optional_usage(self):
+        usage = dict(prompt_tokens=41, completion_tokens=17, total_tokens=58)
+        self.f.trace_change = lambda trace: streamed_trace(trace, [usage])
+        c = self.open()
+        self.assertTrue(self.run_one(c)['correct'])
+        self.assertTrue(self.run_one(c)['correct'])
+        summary = c.finish()
+        self.assertTrue(summary['flow_passed'])
+        self.assertEqual(summary['usage'], [usage, usage])
+        self.assertEqual((summary['completed_steps'], summary['unresolved_steps']), (2, 0))
+        self.assertTrue(summary['exact_unload'])
+        self.assertEqual(self.f.sends, 2)
+        self.assertEqual(self.f.tool.inventory('widget')['available'], 10)
+
+    def test_streamed_flow_without_usage_preserves_unmeasured_tokens(self):
+        self.f.trace_change = streamed_trace
+        c = self.open()
+        self.run_one(c); self.run_one(c)
+        summary = c.finish()
+        self.assertTrue(summary['flow_passed'])
+        self.assertEqual(summary['usage'], [None, None])
+        self.assertEqual(self.f.sends, 2)
+
+    def test_json_and_sse_optional_usage_does_not_change_applied_effect(self):
+        valid = dict(prompt_tokens=41, completion_tokens=17, total_tokens=58)
+        cases = [(valid, valid), (None, None), ({}, None), ([], None),
+                 (dict(valid, completion_tokens=True), None),
+                 (dict(valid, prompt_tokens=-1), None),
+                 (dict(valid, total_tokens='58'), None),
+                 (dict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                  dict(prompt_tokens=0, completion_tokens=0, total_tokens=0))]
+        for stream in (False, True):
+            for usage, expected in cases:
+                with self.subTest(stream=stream, usage=usage):
+                    f = MultistepTests(); f.setUp(); self.addCleanup(f.doCleanups)
+                    f.plan['steps'] = f.plan['steps'][:1]
+                    def change(trace):
+                        if stream:
+                            streamed_trace(trace, [usage])
+                        else:
+                            response = json.loads(base64.b64decode(trace['wire_response_base64']))
+                            response['usage'] = usage
+                            trace['wire_response_base64'] = base64.b64encode(shadow._canonical(response)).decode()
+                    f.f.trace_change = change
+                    c = f.open(); result = f.run_one(c)
+                    self.assertEqual(result['usage'], expected)
+                    self.assertTrue(c.finish()['flow_passed'])
+                    self.assertEqual(f.f.sends, 1)
+                    self.assertEqual(f.f.tool.inventory('widget')['available'], 6)
+                    self.assertEqual(result['actual_state']['effect_receipts'], 1)
+
+    def test_streamed_repeated_usage_is_not_added(self):
+        usage = dict(prompt_tokens=41, completion_tokens=17, total_tokens=58)
+        self.f.trace_change = lambda trace: streamed_trace(trace, [usage, None, usage])
+        c = self.open(); result = self.run_one(c)
+        self.assertEqual(result['usage'], usage)
+        self.run_one(c); self.assertTrue(c.finish()['flow_passed'])
+
+    def test_streamed_conflicting_usage_is_unmeasured_without_losing_effect(self):
+        usage = dict(prompt_tokens=41, completion_tokens=17, total_tokens=58)
+        self.f.trace_change = lambda trace: streamed_trace(trace, [usage, dict(usage, completion_tokens=18)])
+        c = self.open(); result = self.run_one(c)
+        self.assertIsNone(result['usage']); self.assertTrue(result['correct'])
+        self.run_one(c); self.assertTrue(c.finish()['flow_passed'])
+
+    def test_streamed_budget_terminal_stays_failure_without_effect_or_resend(self):
+        self.f.trace_change = lambda trace: streamed_trace(trace, finish='length')
+        c = self.open(); result = self.run_one(c)
+        self.assertEqual((result['route_state'], result['host_reason']), ('generation_failed', 'budget_exhausted'))
+        summary = c.finish()
+        self.assertFalse(summary['flow_passed']); self.assertTrue(summary['exact_unload'])
+        self.assertEqual((summary['attempted_steps'], summary['blocked_steps']), (1, 1))
+        self.assertEqual(self.f.sends, 1); self.assertIsNone(self.f.tool.lookup('op-1'))
+
+    def test_streamed_invalid_proposal_stays_invalid_and_blocks_suffix(self):
+        self.responses[0] = '{}'; self.f.trace_change = streamed_trace
+        c = self.open(); result = self.run_one(c)
+        self.assertEqual(result['route_state'], 'invalid')
+        summary = c.finish()
+        self.assertFalse(summary['flow_passed']); self.assertTrue(summary['exact_unload'])
+        self.assertEqual(summary['blocked_steps'], 1)
+        self.assertEqual(self.f.sends, 1); self.assertIsNone(self.f.tool.lookup('op-1'))
+
+    def test_incomplete_stream_with_usage_cannot_authorize_effect_or_cleanup(self):
+        usage = dict(prompt_tokens=41, completion_tokens=17, total_tokens=58)
+        self.f.trace_change = lambda trace: streamed_trace(trace, [usage], done=False)
+        c = self.open()
+        with self.assertRaises(native.NativePromptError): self.run_one(c)
+        with self.assertRaises(Conflict): c.finish()
+        self.assertEqual(self.f.sends, 1); self.assertIsNone(self.f.tool.lookup('op-1'))
+        self.assertFalse(c.summary()['exact_unload'])
+
+    def test_altered_stream_usage_invalidates_existing_native_evidence(self):
+        usage = dict(prompt_tokens=41, completion_tokens=17, total_tokens=58)
+        self.f.trace_change = lambda trace: streamed_trace(trace, [usage])
+        c = self.open(); self.run_one(c)
+        path = self.f.adapter.evidence_dir/'worker-0000.json'
+        trace = json.loads(path.read_bytes())
+        wire = base64.b64decode(trace['wire_response_base64'])
+        trace['wire_response_base64'] = base64.b64encode(wire.replace(b'"total_tokens":58', b'"total_tokens":59')).decode()
+        path.write_bytes(shadow._canonical(trace))
+        with self.assertRaisesRegex(shadow.ShadowError, 'shadow.digest_mismatch'): c.summary()
+        self.assertEqual(self.f.sends, 1)
+        self.assertEqual(self.f.tool.inventory('widget')['available'], 6)
+
+    def test_streamed_process_fault_recovers_original_effect_and_usage(self):
+        usage = dict(prompt_tokens=41, completion_tokens=17, total_tokens=58)
+        for stage in ('execution_intent', 'tool_effect'):
+            with self.subTest(stage=stage):
+                f = MultistepTests(); f.setUp(); self.addCleanup(f.doCleanups)
+                f.plan['steps'] = f.plan['steps'][:1]; f.plan['steps'][0]['fault_stage'] = stage
+                f.f.trace_change = lambda trace: streamed_trace(trace, [usage])
+                f.workflow.close(); pid = os.fork()
+                if pid == 0:
+                    try:
+                        f.workflow = f.open_workflow(); f.run_one(f.open()); os._exit(87)
+                    except BaseException: os._exit(88)
+                _, status = os.waitpid(pid, 0)
+                self.assertEqual(os.waitstatus_to_exitcode(status), 86)
+                f.workflow = f.open_workflow(); c = f.open()
+                with patch.object(DohaaController, 'run', side_effect=AssertionError('controller replay')), \
+                     patch.object(native.subprocess, 'Popen', side_effect=AssertionError('generation replay')):
+                    result = c.recover_current()
+                    self.assertTrue(result['correct']); self.assertEqual(result['usage'], usage)
+                    summary = c.finish()
+                self.assertTrue(summary['flow_passed']); self.assertTrue(summary['exact_unload'])
+                self.assertEqual(summary['recovered_steps'], 1)
+                self.assertEqual(result['actual_state']['effect_receipts'], 1)
+                self.assertEqual(f.f.tool.inventory('widget')['available'], 6)
 
     def test_second_request_observes_effect_but_no_private_grants_or_oracle(self):
         c=self.open();self.run_one(c);self.run_one(c)
@@ -236,6 +380,7 @@ class MultistepTests(unittest.TestCase):
         f=fixtures.ToolEvidenceTests();f.setUp();self.addCleanup(f.doCleanups)
         self.f=f;self.executor=Executor(f.intent,f.tool);self.workflow=self.open_workflow('simple')
         self.plan.update(route='simple',grants_sha256=self.m.grants_sha256(f.tool))
+        f.trace_change = streamed_trace
         c=self.open()
         with patch.object(DohaaController,'run',side_effect=AssertionError('not DOHAA')):
             self.run_one(c);self.run_one(c)

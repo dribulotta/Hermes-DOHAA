@@ -6,6 +6,19 @@ the actual DOHAA controller or the independent simple route. Use separate,
 equivalent collectors/stores to compare routes and reasoning profiles. This
 collector does not choose model settings or an experimental comparison for you.
 
+Optional token usage is read from the exact verified native response, whether
+JSON or complete SSE. Missing/null usage, malformed counters and conflicting
+reports remain unmeasured (`None`); identical repeated SSE reports count once.
+Counter values must be nonnegative integers (booleans are not counters). No
+missing value is converted to zero. The complete framing and model identity
+remain subject to native verification, including during recovery: optional
+accounting does not authorize an incomplete or altered response, another model
+request, a duplicate effect or a passing result for an invalid proposal.
+
+This fixes the accounting failure identified in #103 after the first applied
+operation of #101. The original frozen cohort remains incomplete; corrected
+code must be validated and separately committed before any new live study.
+
 The prospective private plan pins collector and route source, native and
 collection policies, initial state, grants, task/step identities, public request
 templates, continuation states, fault schedule and expected outcomes. Only a
