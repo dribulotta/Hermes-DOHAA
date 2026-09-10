@@ -11,6 +11,12 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools import controlled_route_protocol as boundary
 
+# Test both standalone and composed checkouts. This only chooses the fixture's
+# explicit label; validation still requires the independently pinned source hash.
+INTEGRATED_FIXTURE = (boundary._ROOT/'src/hermes_dohaa/assurance/evidence_policy.py').is_file()
+FIXTURE_PIPELINE = 'verified-tool-admission/1.1' if INTEGRATED_FIXTURE else 'verified-tool-admission/1.0'
+FIXTURE_FILES = boundary.INTEGRATED_AUDITED_FILES if INTEGRATED_FIXTURE else boundary.AUDITED_FILES
+FIXTURE_SOURCE = boundary.INTEGRATED_AUDITED_SOURCE_SHA256 if INTEGRATED_FIXTURE else boundary.AUDITED_SOURCE_SHA256
 
 def encode(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
@@ -23,7 +29,7 @@ def protocol(outcome='effect_outcome'):
                   max_native_calls=1, max_output_tokens=1024,
                   reasoning_strategy='none')
     return dict(schema_version='hermes-route-attribution-protocol/1.0',
-                pipeline='verified-tool-admission/1.0', outcome=outcome,
+                pipeline=FIXTURE_PIPELINE, outcome=outcome,
                 study_kind='fresh_synthetic_conformance',
                 pairing='identical_proposal_independent_state',
                 arms=[dict(shared, route='dohaa'), dict(shared, route='simple')])
@@ -131,7 +137,7 @@ class RouteProtocolTests(unittest.TestCase):
     def test_changed_source_cannot_keep_the_old_causal_classification(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for relative in boundary.AUDITED_FILES:
+            for relative in FIXTURE_FILES:
                 target = root/relative; target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((boundary._ROOT/relative).read_bytes())
             target = root/'tools/controlled_tool_routes.py'
@@ -148,6 +154,56 @@ class RouteProtocolTests(unittest.TestCase):
     def test_validated_report_is_bound_to_original_protocol_and_audited_source(self):
         raw = protocol(); result = validate(raw)
         self.assertEqual(result['protocol_sha256'], hashlib.sha256(encode(raw)).hexdigest())
-        self.assertEqual(result['source_sha256'], boundary.AUDITED_SOURCE_SHA256)
+        self.assertEqual(result['source_sha256'], FIXTURE_SOURCE)
         raw['arms'][0]['route'] = 'other'
         self.assertEqual(result['routes'], ['dohaa', 'simple'])
+
+    def test_each_explicit_profile_binds_its_own_file_list_and_commitment(self):
+        # Mocked source measurements exercise dispatch, not source attestation.
+        profiles = [('verified-tool-admission/1.0', boundary.AUDITED_FILES, boundary.AUDITED_SOURCE_SHA256),
+                    ('verified-tool-admission/1.1', boundary.INTEGRATED_AUDITED_FILES, boundary.INTEGRATED_AUDITED_SOURCE_SHA256)]
+        for label, files, digest in profiles:
+            raw = protocol(); raw['pipeline'] = label
+            with patch.object(boundary, '_source_fingerprint', return_value=digest) as fingerprint:
+                result = validate(raw)
+                fingerprint.assert_called_once_with(files)
+                self.assertEqual(result['pipeline'], label)
+                self.assertEqual(result['source_sha256'], digest)
+            other = next(value for _, _, value in profiles if value != digest)
+            with patch.object(boundary, '_source_fingerprint', return_value=other):
+                with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_changed'):
+                    validate(raw)
+
+    def test_actual_checkout_does_not_implicitly_select_the_other_profile(self):
+        raw = protocol()
+        raw['pipeline'] = 'verified-tool-admission/1.0' if INTEGRATED_FIXTURE else 'verified-tool-admission/1.1'
+        with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_(changed|unavailable)'):
+            validate(raw)
+
+    def test_integrated_profile_measures_and_requires_new_evidence_dependency(self):
+        dependency = 'src/hermes_dohaa/assurance/evidence_policy.py'
+        self.assertNotIn(dependency, boundary.AUDITED_FILES)
+        self.assertIn(dependency, boundary.INTEGRATED_AUDITED_FILES)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in boundary.INTEGRATED_AUDITED_FILES:
+                target = root/relative; target.parent.mkdir(parents=True, exist_ok=True)
+                original = boundary._ROOT/relative
+                target.write_bytes(original.read_bytes() if original.exists() else b'synthetic dependency')
+            with patch.object(boundary, '_ROOT', root):
+                before = boundary._source_fingerprint(boundary.INTEGRATED_AUDITED_FILES)
+                target = root/dependency
+                target.write_bytes(target.read_bytes()+b'\n# changed dependency\n')
+                self.assertNotEqual(boundary._source_fingerprint(boundary.INTEGRATED_AUDITED_FILES), before)
+                raw = protocol(); raw['pipeline'] = 'verified-tool-admission/1.1'
+                with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_changed'):
+                    validate(raw)
+                target.unlink()
+                with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_unavailable'):
+                    validate(raw)
+
+    def test_untyped_or_unreviewed_profile_has_no_dynamic_fallback(self):
+        for label in (None, [], {}, True, 'verified-tool-admission/1.2'):
+            raw = protocol(); raw['pipeline'] = label
+            with self.assertRaisesRegex(boundary.ProtocolError, 'unsupported_pipeline'):
+                validate(raw)

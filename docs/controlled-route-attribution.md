@@ -24,16 +24,41 @@ DOHAA mechanisms are equivalent or that a downstream controller cannot help.
 ## Offline protocol boundary
 
 `tools.controlled_route_protocol.validate_protocol` accepts bounded committed
-JSON bytes and an independently retained SHA-256. Its built-in reviewed profile
-binds 19 source files covering the route, controller/gates, host/evidence boundary
+JSON bytes and an independently retained SHA-256. Its built-in reviewed profiles
+bind fixed source files covering the route, controller/gates, host/evidence boundary
 and simulator. The expected commitment is pinned, not computed from the current
 checkout and then automatically accepted. A changed or missing audited file
 requires a new review; a caller cannot supply a source root, alternate hash or
 intervention label. Source bytes normalize CRLF to LF, matching project source
 identity conventions.
 
-Version `hermes-route-attribution-protocol/1.0` supports only pipeline
-`verified-tool-admission/1.0` and study kind `fresh_synthetic_conformance`.
+Version `hermes-route-attribution-protocol/1.0` supports two explicitly selected
+pipelines and study kind `fresh_synthetic_conformance`:
+
+- `verified-tool-admission/1.0` preserves the original 19-file review commitment
+  `f257124425ec1593a12b1764b5bad99591637d2964bb0a036892191c04378aec`.
+- `verified-tool-admission/1.1` binds the reviewed composition with evidence
+  policy fixes #46/#69, collection operations #47 and bounded repair #62. Its
+  20-file commitment includes the new `assurance/evidence_policy.py` dependency:
+  `2f3488dda8397ea7a414a1e187946929444278dda3beb974951472be682ebe8b`.
+
+The caller must select the profile matching its reviewed source. No automatic
+upgrade, fallback, caller-supplied replacement hash or dynamically accepted
+fingerprint exists. Old protocol bytes remain unchanged and do not pass against
+the newly composed source under the old label. Unknown versions, mixed-source
+compositions and missing/changed dependencies fail closed. A later source change
+requires another review even if its unit tests pass.
+
+The integration review checked the changed controller, gate, semantic operation
+and identity paths. The tool route still uses one already verified proposal,
+`max_attempts=1`, no repair-capable runtime and only exact-proposal/action gates.
+It supplies no semantic assertions to trigger the new deterministic repair
+sequence. Its durable proof rejects repaired or extra decisions. Consequently
+the raw native answer remains fixed before the route switch under both profiles.
+The evidence-policy module is now imported by gates and included in controller
+identity, so the new profile must pin it even though this narrow route does not
+opt into its claim gate. This review adds no new outcome or execution authority.
+
 Allowed endpoints are `proposal_admission`, `effect_outcome` and
 `recovery_outcome`. `native_answer_quality` is rejected because it precedes this
 intervention; unknown pipelines and outcomes are rejected instead of inferred.
