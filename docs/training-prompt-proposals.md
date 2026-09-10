@@ -42,6 +42,43 @@ Training and response strings remain untrusted text, never executable actions.
 
 ## Plan, one request and retained evidence
 
+### Observations generated under a different prompt
+
+An opt-in `hermes-training-projection/2.0` preserves two distinct roles. Its
+`baseline_sha256` still binds the prompt against which the candidate will be
+compared. The additional `observation_prompt` string and
+`observation_prompt_sha256` bind the prompt declared to have produced all the
+observations. That prompt may differ from the comparison baseline. Each record
+uses `response` instead of the legacy `baseline_response`; all other record
+fields and input/response hash checks are unchanged. Mixing the two record
+shapes, omitting origin fields or changing the origin without its matching hash
+is rejected. One projection declares one observation prompt; mixed origins
+require separate audited projections, not an invented common origin.
+
+The generator receives the comparison baseline, the observation prompt and
+input/response/code triples, plus a fixed explanation of those roles. Origin
+hashes, partition declarations and expected answers stay out of that message.
+The complete projection, including the origin bytes and hash, remains committed
+by the plan and retained in the candidate evidence. Recomputing an origin hash
+does not make it consistent with an already pinned plan.
+
+Version 2 also accepts `reference.unresolved` for a retained nonempty response
+whose correctness cannot be graded reliably. This is neither a correct example
+nor a confirmed model error. It cannot appear with a `result.*` or `runtime.*`
+code. Known format or action diagnostics may accompany it. An absent response
+still requires runtime-failure codes; an unresolved reference cannot substitute
+for a missing completion. The module does not decide which references are
+reliable, derive feedback or establish the actual producer of a response. The
+operator must verify these declarations against original recordings.
+
+Version 1 remains strict and does not accept version-2 fields or feedback. Its
+generator input shape is unchanged. Both versions retain the same byte bounds,
+one-call/no-retry budget, source pinning and quarantine/no-adoption behavior.
+An origin declaration is consistency evidence, not execution attestation,
+permission to use data, proof of semantic isolation or evidence of learning.
+
+### Planning and collection
+
 Create the adapter's wire policy with `create_collection_policy`, using its
 source/runtime-policy hashes and result fields `artifact: string` and
 `rationale: string`. `NativePromptAdapter` can consume this policy. Its wire and
