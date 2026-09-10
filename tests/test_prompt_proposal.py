@@ -353,5 +353,160 @@ class PromptProposalTests(unittest.TestCase):
             with self.assertRaises(p.ProposalError): self.run_proposal()
 
 
+def origin_fixture(adapter):
+    original = fixture(adapter)
+    training = json.loads(original['training_bytes'])
+    training.update(schema_version='hermes-training-projection/2.0',
+        observation_prompt=original['baseline_bytes'].decode(),
+        observation_prompt_sha256=digest(original['baseline_bytes']))
+    baseline = b'Comparison prompt retaining the same declared observations'
+    training['baseline_sha256'] = digest(baseline)
+    for row in training['records']:
+        row['response'] = row.pop('baseline_response')
+    args = {key:value for key,value in original.items() if key not in {'plan_bytes','expected_plan_sha256'}}
+    args.update(baseline_bytes=baseline, training_bytes=encode(training))
+    return args
+
+
+def origin_plan(args):
+    plan = encode(p.create_prompt_proposal_plan(**args))
+    return dict(args, plan_bytes=plan, expected_plan_sha256=digest(plan))
+
+
+class PromptObservationProjectionTests(unittest.TestCase):
+    def setUp(self):
+        self.adapter = ProposalFixtureAdapter(Path('unused-synthetic-directory'))
+        self.args = origin_fixture(self.adapter)
+
+    def public(self, args=None):
+        value, _ = p._projection(**(args or self.args))
+        return json.loads(value)['task']
+
+    def changed(self, mutation):
+        training = json.loads(self.args['training_bytes'])
+        mutation(training)
+        return dict(self.args, training_bytes=encode(training))
+
+    def test_explicit_origin_differs_from_candidate_comparison_baseline(self):
+        task = self.public()
+        self.assertEqual(task['baseline_prompt'].encode(), self.args['baseline_bytes'])
+        self.assertEqual(task['observation_prompt'], 'PRIVATE baseline prompt')
+        self.assertNotEqual(task['observation_prompt'], task['baseline_prompt'])
+        self.assertEqual(task['observation_semantics'], p.OBSERVATION_SEMANTICS)
+        self.assertEqual(set(task['training_observations'][0]), {'input','response','feedback_codes'})
+        self.assertNotIn('baseline_response', json.dumps(task))
+
+    def test_generator_gets_no_origin_hash_partition_or_extra_metadata(self):
+        public = json.dumps(self.public())
+        training = json.loads(self.args['training_bytes'])
+        for value in (training['observation_prompt_sha256'], 'observation_prompt_sha256',
+                      'heldout_input_sha256', 'PRIVATE HELDOUT', 'expected_result'):
+            self.assertNotIn(value, public)
+        self.assertEqual(self.adapter.requests, [])
+
+    def test_changed_origin_bytes_or_digest_fail(self):
+        for key,value in [('observation_prompt','Another origin'), ('observation_prompt_sha256','0'*64)]:
+            args = self.changed(lambda t:t.update({key:value}))
+            with self.subTest(key=key), self.assertRaisesRegex(p.ProposalError,'observation_prompt_binding_invalid'):
+                p.create_prompt_proposal_plan(**args)
+
+    def test_missing_origin_fields_or_mixed_record_names_fail(self):
+        mutations = [lambda t:t.pop('observation_prompt'), lambda t:t.pop('observation_prompt_sha256'),
+                     lambda t:t['records'][0].update(baseline_response='unbound copy'),
+                     lambda t:t['records'][0].update(expected_answer='protected answer')]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation), self.assertRaises(shadow.ShadowError):
+                p.create_prompt_proposal_plan(**self.changed(mutation))
+
+    def test_reference_unresolved_is_not_rewritten_as_a_grade(self):
+        args = self.changed(lambda t:t['records'][0].update(feedback_codes=['reference.unresolved']))
+        self.assertEqual(self.public(args)['training_observations'][0]['feedback_codes'], ['reference.unresolved'])
+        self.assertEqual(self.public(args)['training_observations'][0]['response'], 'Observed incorrect answer')
+        self.assertFalse(p.create_prompt_proposal_plan(**args)['execution_attested'])
+
+    def test_unresolved_reference_cannot_mix_with_correctness_or_runtime_verdict(self):
+        for code in ('result.correct','result.incorrect','runtime.timeout','runtime.failed'):
+            args = self.changed(lambda t:t['records'][0].update(feedback_codes=['reference.unresolved',code]))
+            with self.subTest(code=code), self.assertRaises(shadow.ShadowError):
+                p.create_prompt_proposal_plan(**args)
+
+    def test_unresolved_reference_can_retain_known_format_or_action_diagnostics(self):
+        args = self.changed(lambda t:t['records'][0].update(
+            feedback_codes=['reference.unresolved','response.invalid_format','actions.proposed']))
+        self.assertEqual(self.public(args)['training_observations'][0]['feedback_codes'],
+                         ['reference.unresolved','response.invalid_format','actions.proposed'])
+
+    def test_unresolved_reference_does_not_manufacture_an_absent_response(self):
+        args = self.changed(lambda t:t['records'][1].update(feedback_codes=['reference.unresolved']))
+        with self.assertRaisesRegex(p.ProposalError,'training_response_missing'):
+            p.create_prompt_proposal_plan(**args)
+
+    def test_legacy_projection_does_not_accept_new_fields_or_code(self):
+        original = fixture(self.adapter)
+        args = {k:v for k,v in original.items() if k not in {'plan_bytes','expected_plan_sha256'}}
+        for kind in ('field','code'):
+            training = json.loads(args['training_bytes'])
+            if kind=='field': training['observation_prompt']='a different source'
+            else: training['records'][0]['feedback_codes']=['reference.unresolved']
+            with self.subTest(kind=kind), self.assertRaises(shadow.ShadowError):
+                p.create_prompt_proposal_plan(**dict(args,training_bytes=encode(training)))
+        public,_=p._projection(**args)
+        self.assertEqual(set(json.loads(public)['task']), {'baseline_prompt','training_observations'})
+
+    def test_origin_prompt_utf8_bound_and_empty_origin_fail(self):
+        for value in ('', ' '*8, 'é'*4097):
+            args = self.changed(lambda t:t.update(observation_prompt=value,observation_prompt_sha256=digest(value.encode())))
+            with self.subTest(size=len(value)), self.assertRaises(p.ProposalError):
+                p.create_prompt_proposal_plan(**args)
+
+    def test_comparison_baseline_bound_is_not_relaxed(self):
+        baseline=b'x'*8193
+        args=self.changed(lambda t:t.update(baseline_sha256=digest(baseline)))
+        with self.assertRaises(p.ProposalError):
+            p.create_prompt_proposal_plan(**dict(args,baseline_bytes=baseline))
+
+    def test_source_change_is_pinned_even_with_consistent_new_digest(self):
+        plan=origin_plan(self.args)
+        args=self.changed(lambda t:t.update(observation_prompt='A changed source prompt',
+                        observation_prompt_sha256=digest(b'A changed source prompt')))
+        with self.assertRaisesRegex(p.ProposalError,'proposal.plan_mismatch'):
+            p._prepare(**dict(plan,training_bytes=args['training_bytes']))
+
+
+@unittest.skipUnless(os.name == 'posix', 'private publication requires POSIX')
+class PromptObservationRecordingTests(unittest.TestCase):
+    def test_origin_and_unresolved_feedback_survive_recording_and_candidate_audit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)/'proposal'
+            adapter=ProposalFixtureAdapter(directory)
+            args=origin_fixture(adapter)
+            training=json.loads(args['training_bytes'])
+            training['records'][0]['feedback_codes']=['reference.unresolved']
+            args=origin_plan(dict(args,training_bytes=encode(training)))
+            report=p.propose_prompt_candidate(**args,adapter=adapter,output_dir=directory)
+            self.assertEqual(report['status'],'candidate_recorded')
+            self.assertEqual((adapter.starts,len(adapter.requests),adapter.finishes),(1,1,1))
+            recording=(directory/'recording.json').read_bytes()
+            candidate=(directory/'candidate.json').read_bytes()
+            self.assertEqual(report,p.audit_prompt_proposal(**args,recording_bytes=recording,
+                expected_recording_sha256=digest(recording),candidate_bytes=candidate))
+            snapshot=load_artifact_snapshot(directory/'candidate.json',expected_id=report['candidate_id'],artifact_dir=directory/'artifacts')
+            self.assertEqual(snapshot.baseline.content,args['baseline_bytes'])
+            self.assertEqual(snapshot.evidence[0].content,args['training_bytes'])
+            task=json.loads(json.loads(adapter.requests[0])['input'])['task']
+            self.assertEqual(task['observation_prompt'],training['observation_prompt'])
+            self.assertEqual(task['training_observations'][0]['feedback_codes'],['reference.unresolved'])
+            self.assertFalse(report['activation_authorized'])
+
+    def test_origin_drift_fails_before_adapter_start_or_directory_creation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)/'proposal';adapter=ProposalFixtureAdapter(directory)
+            args=origin_plan(origin_fixture(adapter));training=json.loads(args['training_bytes'])
+            training['observation_prompt']='Changed origin';training['observation_prompt_sha256']=digest(b'Changed origin')
+            with self.assertRaises(shadow.ShadowError):
+                p.propose_prompt_candidate(**dict(args,training_bytes=encode(training)),adapter=adapter,output_dir=directory)
+            self.assertEqual(adapter.starts,0);self.assertFalse(directory.exists())
+
+
 if __name__=='__main__':
     unittest.main()
