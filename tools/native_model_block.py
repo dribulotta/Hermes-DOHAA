@@ -11,6 +11,9 @@ from urllib.parse import urlsplit
 
 from hermes_dohaa.learning import native_prompt as native,shadow
 from hermes_dohaa.learning.native_reasoning import binary_model_sha256
+from hermes_dohaa.learning.native_response_format import (
+    DOCUMENT_RESPONSE_CONTRACT, BOOLEAN_RESPONSE_CONTRACT, PROMPT_RESPONSE_CONTRACT,
+    fixed_shadow_result_fields)
 from tools.document_stream_request import canonical
 from tools.native_memory_pilot import usage
 from tools.native_model_residency import ModelResidency
@@ -31,10 +34,17 @@ def record_block(root,adapter,requests,expected_model_sha256,*,wall_seconds,no_n
     if (type(adapter) is not native.NativePromptAdapter or adapter.state!='new'
             or adapter.evidence_dir.absolute()!=root/'native'
             or adapter.policy['schema_version']!='hermes-native-shadow-policy/1.2'
-            or adapter.policy['response_contract']!='document-stream-proposal/1.0'
+            or adapter.policy['response_contract'] not in (
+                DOCUMENT_RESPONSE_CONTRACT, BOOLEAN_RESPONSE_CONTRACT, PROMPT_RESPONSE_CONTRACT)
             or adapter.policy['reasoning_effort']!='none'):
-        raise ValueError('fresh document adapter required')
+        raise ValueError('fresh fixed-contract adapter required')
     p=adapter.policy
+    if p['response_contract'] != DOCUMENT_RESPONSE_CONTRACT:
+        expected_collection = native.collection.create_collection_policy(
+            adapter_sha256=native.native_adapter_sha256(), runtime_policy_sha256=adapter.runtime_policy_sha256,
+            result_fields=fixed_shadow_result_fields(p['response_contract']))
+        if shadow._hash(canonical(expected_collection)) != adapter.collection_sha256:
+            raise ValueError('response and collection contracts differ')
     if (type(requests) not in (tuple,list) or not 1<=len(requests)<=min(8,p['request_limit'])
             or type(wall_seconds) is not int or not 1<=wall_seconds<=10800
             or type(no_new_call_margin_seconds) is not int
