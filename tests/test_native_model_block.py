@@ -12,7 +12,8 @@ from unittest.mock import Mock,patch
 
 from hermes_dohaa.learning import collection,native_prompt as n
 from hermes_dohaa.learning.native_reasoning import binary_model_sha256
-from hermes_dohaa.learning.native_response_format import document_response_format
+from hermes_dohaa.learning.native_response_format import (response_format_for_policy,
+    BOOLEAN_RESPONSE_CONTRACT, PROMPT_RESPONSE_CONTRACT, fixed_shadow_result_fields)
 from tools import native_model_block as block
 from tools.document_stream_request import make_request,native_request
 from test_native_shadow_adapter import policy,wire,sse,encode,digest
@@ -64,7 +65,7 @@ class NativeBlockTests(unittest.TestCase):
             self.assertEqual(list(profile.iterdir()),[])
             if index:self.assertEqual(self.profiles[index-1].stat().st_uid,0)
             (profile/'private-marker').write_text(f'only-{index}')
-            wr=wire(logical,self.p);wr['response_format']=document_response_format()
+            wr=wire(logical,self.p);wr['response_format']=response_format_for_policy(self.p)
             trace=dict(schema_version='hermes-shadow-trace/1.0',request_sha256=digest(encode(logical)),
                 runtime_policy_sha256=self.adapter.runtime_policy_sha256,bridge_sha256=self.p['bridge_sha256'],
                 uid=self.p['worker_uid'],gid=self.p['worker_gid'],identity_isolated=True,agent_class='AIAgent',
@@ -79,6 +80,58 @@ class NativeBlockTests(unittest.TestCase):
         with patch.object(n.subprocess,'Popen',side_effect=self.spawn):
             return block.record_block(self.root,self.adapter,self.requests if requests is None else requests,self.model_sha,
                                       wall_seconds=60,no_new_call_margin_seconds=5,**kwargs)
+
+    def configure_shadow(self, contract, count, fields=None):
+        self.p.update(response_contract=contract, request_limit=8)
+        pb=encode(self.p)
+        cb=encode(collection.create_collection_policy(adapter_sha256=n.native_adapter_sha256(),
+            runtime_policy_sha256=digest(pb), result_fields=fields or fixed_shadow_result_fields(contract)))
+        self.adapter=n.NativePromptAdapter(policy_bytes=pb,expected_policy_sha256=digest(pb),
+            collection_policy_bytes=cb,native_source=self.root,python=Path(sys.executable),
+            evidence_dir=self.root/'native',api_key='synthetic')
+        self.adapter._http=self.http
+        self.requests=tuple(collection._request('fixed-shadow-block',i,
+            {'input_sha256':digest(f'New synthetic public input {i}'.encode())},
+            f'New synthetic public input {i}', 'Fixed synthetic shadow prompt',digest(cb)) for i in range(count))
+
+    def test_eight_boolean_observations_share_one_load_and_exact_unload(self):
+        self.configure_shadow(BOOLEAN_RESPONSE_CONTRACT,8)
+        self.content=encode(dict(result=dict(answer=True),actions=[])).decode()
+        result=self.run_block()
+        self.assertEqual(result['status'],'completed')
+        self.assertEqual((self.loads,self.sends,self.unloads),(1,8,1))
+        self.assertEqual(len(set(self.profiles)),8)
+        self.assertTrue(all(json.loads((self.root/'calls'/f'{i:03d}'/'receipt.private.json').read_bytes())['content']==self.content for i in range(8)))
+
+    def test_one_prompt_proposal_uses_existing_block_lifecycle(self):
+        self.configure_shadow(PROMPT_RESPONSE_CONTRACT,1)
+        self.content=encode(dict(result=dict(artifact='New synthetic candidate',rationale='Synthetic explanation'),actions=[])).decode()
+        result=self.run_block()
+        self.assertEqual(result['status'],'completed')
+        self.assertEqual((self.loads,self.sends,self.unloads),(1,1,1))
+
+    def test_mismatched_shadow_collection_fields_fail_before_load(self):
+        self.configure_shadow(BOOLEAN_RESPONSE_CONTRACT,1,fields={'artifact':'string','rationale':'string'})
+        with self.assertRaisesRegex(ValueError,'contracts differ'):
+            self.run_block()
+        self.assertEqual((self.loads,self.sends,self.unloads),(0,0,0))
+        self.assertFalse((self.root/'started.private.json').exists())
+
+    def test_unknown_boolean_completion_preserves_unresolved_lease_without_cleanup(self):
+        self.configure_shadow(BOOLEAN_RESPONSE_CONTRACT,2)
+        self.content=encode(dict(result=dict(answer=True),actions=[])).decode()
+        self.change=lambda t,i:t.update(server_finished=False) if i==0 else None
+        result=self.run_block()
+        self.assertEqual(result['status'],'incomplete')
+        self.assertEqual((self.loads,self.sends,self.unloads),(1,1,0))
+        self.assertEqual(result['residency_state'],'generating')
+
+    def test_existing_document_collection_with_all_envelope_fields_is_preserved(self):
+        self.configure_shadow('document-stream-proposal/1.0',2,fields={
+            'result':'object','claims':'array','evidence':'array','requested_actions':'array'})
+        result=self.run_block()
+        self.assertEqual(result['status'],'completed')
+        self.assertEqual((self.loads,self.sends,self.unloads),(1,2,1))
 
     def test_two_requests_share_one_load_and_one_exact_unload_with_fresh_profiles(self):
         result=self.run_block()

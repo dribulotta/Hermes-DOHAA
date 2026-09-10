@@ -1,11 +1,26 @@
 # Bounded serial blocks with one owned model instance
 
-`tools.native_model_block.record_block` collects one to eight native document
+`tools.native_model_block.record_block` collects one to eight native fixed-contract
 requests using one model load, distinct native worker profiles, and one exact
 owned unload at the end. It retains the native adapter, catalog identity check,
-durable residency journal, wire/terminal verifier and document response contract.
+durable residency journal and wire/terminal verifier.
 The previous one-call recorder is unchanged. This module does not dispatch a
 campaign, choose cases, score answers, retry a failed generation or switch models.
+
+Explicit policy 1.2 contracts are `document-stream-proposal/1.0`,
+`shadow-boolean-answer/1.0` and `shadow-prompt-proposal/1.0`. The latter two use
+the existing shadow envelope: `result.answer` is boolean, or `result.artifact`
+and `result.rationale` are strings, with an empty top-level `actions` array.
+For these two new contracts, the collection field map must match before loading.
+An unknown contract or caller-supplied JSON schema is not accepted. Legacy native
+policies do not acquire these contracts implicitly. Document schema and existing
+collection declarations remain unchanged.
+
+The schemas constrain output shape only. False answers and ineffective prompts
+can still be valid JSON. Byte limits, feedback, candidate quarantine and semantic
+evaluation remain in the existing learning modules. String schema lengths are
+not used as a substitute for UTF-8 byte limits. A recorded prompt response is
+not itself a candidate or permission to activate one.
 
 All request bytes and IDs are checked for validity and uniqueness before loading.
 Their order is fixed. Each verified completed or known budget/runtime terminal
