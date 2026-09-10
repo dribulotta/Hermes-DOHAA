@@ -11,12 +11,11 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools import controlled_route_protocol as boundary
 
-# Test both standalone and composed checkouts. This only chooses the fixture's
-# explicit label; validation still requires the independently pinned source hash.
-INTEGRATED_FIXTURE = (boundary._ROOT/'src/hermes_dohaa/assurance/evidence_policy.py').is_file()
-FIXTURE_PIPELINE = 'verified-tool-admission/1.1' if INTEGRATED_FIXTURE else 'verified-tool-admission/1.0'
-FIXTURE_FILES = boundary.INTEGRATED_AUDITED_FILES if INTEGRATED_FIXTURE else boundary.AUDITED_FILES
-FIXTURE_SOURCE = boundary.INTEGRATED_AUDITED_SOURCE_SHA256 if INTEGRATED_FIXTURE else boundary.AUDITED_SOURCE_SHA256
+# This checkout explicitly exercises the newly reviewed profile. The fixture
+# does not compute or substitute the expected source commitment at runtime.
+FIXTURE_PIPELINE = 'verified-tool-admission/1.2'
+FIXTURE_FILES = boundary.INTEGRATED_AUDITED_FILES
+FIXTURE_SOURCE = boundary.BOUNDED_AUDITED_SOURCE_SHA256
 
 def encode(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
@@ -161,7 +160,8 @@ class RouteProtocolTests(unittest.TestCase):
     def test_each_explicit_profile_binds_its_own_file_list_and_commitment(self):
         # Mocked source measurements exercise dispatch, not source attestation.
         profiles = [('verified-tool-admission/1.0', boundary.AUDITED_FILES, boundary.AUDITED_SOURCE_SHA256),
-                    ('verified-tool-admission/1.1', boundary.INTEGRATED_AUDITED_FILES, boundary.INTEGRATED_AUDITED_SOURCE_SHA256)]
+                    ('verified-tool-admission/1.1', boundary.INTEGRATED_AUDITED_FILES, boundary.INTEGRATED_AUDITED_SOURCE_SHA256),
+                    ('verified-tool-admission/1.2', boundary.INTEGRATED_AUDITED_FILES, boundary.BOUNDED_AUDITED_SOURCE_SHA256)]
         for label, files, digest in profiles:
             raw = protocol(); raw['pipeline'] = label
             with patch.object(boundary, '_source_fingerprint', return_value=digest) as fingerprint:
@@ -169,16 +169,17 @@ class RouteProtocolTests(unittest.TestCase):
                 fingerprint.assert_called_once_with(files)
                 self.assertEqual(result['pipeline'], label)
                 self.assertEqual(result['source_sha256'], digest)
-            other = next(value for _, _, value in profiles if value != digest)
-            with patch.object(boundary, '_source_fingerprint', return_value=other):
-                with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_changed'):
-                    validate(raw)
+            for other in (value for _, _, value in profiles if value != digest):
+                with patch.object(boundary, '_source_fingerprint', return_value=other):
+                    with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_changed'):
+                        validate(raw)
 
     def test_actual_checkout_does_not_implicitly_select_the_other_profile(self):
-        raw = protocol()
-        raw['pipeline'] = 'verified-tool-admission/1.0' if INTEGRATED_FIXTURE else 'verified-tool-admission/1.1'
-        with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_(changed|unavailable)'):
-            validate(raw)
+        for label in ('verified-tool-admission/1.0', 'verified-tool-admission/1.1'):
+            raw = protocol(); raw['pipeline'] = label
+            with self.subTest(label=label), self.assertRaisesRegex(
+                    boundary.ProtocolError, 'audited_source_(changed|unavailable)'):
+                validate(raw)
 
     def test_integrated_profile_measures_and_requires_new_evidence_dependency(self):
         dependency = 'src/hermes_dohaa/assurance/evidence_policy.py'
@@ -195,7 +196,7 @@ class RouteProtocolTests(unittest.TestCase):
                 target = root/dependency
                 target.write_bytes(target.read_bytes()+b'\n# changed dependency\n')
                 self.assertNotEqual(boundary._source_fingerprint(boundary.INTEGRATED_AUDITED_FILES), before)
-                raw = protocol(); raw['pipeline'] = 'verified-tool-admission/1.1'
+                raw = protocol()
                 with self.assertRaisesRegex(boundary.ProtocolError, 'audited_source_changed'):
                     validate(raw)
                 target.unlink()
@@ -203,7 +204,7 @@ class RouteProtocolTests(unittest.TestCase):
                     validate(raw)
 
     def test_untyped_or_unreviewed_profile_has_no_dynamic_fallback(self):
-        for label in (None, [], {}, True, 'verified-tool-admission/1.2'):
+        for label in (None, [], {}, True, 'verified-tool-admission/1.3'):
             raw = protocol(); raw['pipeline'] = label
             with self.assertRaisesRegex(boundary.ProtocolError, 'unsupported_pipeline'):
                 validate(raw)
