@@ -35,6 +35,16 @@ AUDITED_FILES = (
 # Reviewed at PR111. Updating this commitment requires a new source review;
 # deriving the expected value automatically at validation time would defeat it.
 AUDITED_SOURCE_SHA256 = 'f257124425ec1593a12b1764b5bad99591637d2964bb0a036892191c04378aec'
+# Separately reviewed composition of PR119 with core fixes46/69,47 and62.
+# The new evidence-policy dependency is part of this profile's commitment.
+# Preserve the original profile; never accept a new checkout under its label.
+INTEGRATED_AUDITED_FILES = tuple(sorted((*AUDITED_FILES,
+    'src/hermes_dohaa/assurance/evidence_policy.py')))
+INTEGRATED_AUDITED_SOURCE_SHA256 = '2f3488dda8397ea7a414a1e187946929444278dda3beb974951472be682ebe8b'
+_PROFILES = {
+    'verified-tool-admission/1.0': (AUDITED_FILES, AUDITED_SOURCE_SHA256),
+    'verified-tool-admission/1.1': (INTEGRATED_AUDITED_FILES, INTEGRATED_AUDITED_SOURCE_SHA256),
+}
 _PROTOCOL_FIELDS = frozenset(('schema_version', 'pipeline', 'outcome', 'study_kind', 'pairing', 'arms'))
 _COMMITMENTS = ('input_sha256', 'proposal_sha256', 'initial_state_sha256',
                 'permissions_sha256', 'policy_sha256', 'fault_schedule_sha256')
@@ -54,11 +64,11 @@ def _hex(value):
     return type(value) is str and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
 
 
-def _source_fingerprint():
+def _source_fingerprint(files=AUDITED_FILES):
     sources = {}
     total = 0
     try:
-        for relative in AUDITED_FILES:
+        for relative in files:
             path = _ROOT/relative
             if path.is_symlink() or not path.is_file():
                 raise ProtocolError('audited_source_unavailable')
@@ -107,15 +117,16 @@ def validate_protocol(data, expected_sha256):
         raise ProtocolError('protocol_fields')
     if raw['schema_version'] != 'hermes-route-attribution-protocol/1.0':
         raise ProtocolError('protocol_schema')
-    if raw['pipeline'] != 'verified-tool-admission/1.0':
+    if type(raw['pipeline']) is not str or raw['pipeline'] not in _PROFILES:
         raise ProtocolError('unsupported_pipeline')
     if raw['study_kind'] != 'fresh_synthetic_conformance':
         raise ProtocolError('unsupported_study_kind')
     if raw['pairing'] != 'identical_proposal_independent_state':
         raise ProtocolError('unsupported_pairing')
     # These facts belong to the reviewed code profile, never the caller's labels.
-    source_sha256 = _source_fingerprint()
-    if source_sha256 != AUDITED_SOURCE_SHA256:
+    files, expected_source = _PROFILES[raw['pipeline']]
+    source_sha256 = _source_fingerprint(files)
+    if source_sha256 != expected_source:
         raise ProtocolError('audited_source_changed')
     if raw['outcome'] == 'native_answer_quality':
         raise ProtocolError('outcome_precedes_intervention')
