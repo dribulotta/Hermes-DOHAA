@@ -41,9 +41,13 @@ AUDITED_SOURCE_SHA256 = 'f257124425ec1593a12b1764b5bad99591637d2964bb0a036892191
 INTEGRATED_AUDITED_FILES = tuple(sorted((*AUDITED_FILES,
     'src/hermes_dohaa/assurance/evidence_policy.py')))
 INTEGRATED_AUDITED_SOURCE_SHA256 = '2f3488dda8397ea7a414a1e187946929444278dda3beb974951472be682ebe8b'
+# Reviewed semantic boundary fixes: date overflow and ASCII-only array indices.
+# This remains the same downstream one-proposal pipeline, with a new source pin.
+BOUNDED_AUDITED_SOURCE_SHA256 = 'eefba9e31150c287ef278c2ec9fca75895236017b093edbe309d222132657c5e'
 _PROFILES = {
     'verified-tool-admission/1.0': (AUDITED_FILES, AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.1': (INTEGRATED_AUDITED_FILES, INTEGRATED_AUDITED_SOURCE_SHA256),
+    'verified-tool-admission/1.2': (INTEGRATED_AUDITED_FILES, BOUNDED_AUDITED_SOURCE_SHA256),
 }
 _PROTOCOL_FIELDS = frozenset(('schema_version', 'pipeline', 'outcome', 'study_kind', 'pairing', 'arms'))
 _COMMITMENTS = ('input_sha256', 'proposal_sha256', 'initial_state_sha256',

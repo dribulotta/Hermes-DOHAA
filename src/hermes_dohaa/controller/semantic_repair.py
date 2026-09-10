@@ -208,7 +208,7 @@ def _child(current: Any, token: str, pointer: str) -> Any:
 
 
 def _array_index(token: str, pointer: str) -> int:
-    if not token.isdigit() or (len(token) > 1 and token.startswith("0")):
+    if not token.isascii() or not token.isdigit() or (len(token) > 1 and token.startswith("0")):
         raise SemanticEvaluationError(
             "reference.invalid_index",
             source="result",

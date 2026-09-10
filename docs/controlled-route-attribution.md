@@ -32,7 +32,7 @@ requires a new review; a caller cannot supply a source root, alternate hash or
 intervention label. Source bytes normalize CRLF to LF, matching project source
 identity conventions.
 
-Version `hermes-route-attribution-protocol/1.0` supports two explicitly selected
+Version `hermes-route-attribution-protocol/1.0` supports three explicitly selected
 pipelines and study kind `fresh_synthetic_conformance`:
 
 - `verified-tool-admission/1.0` preserves the original 19-file review commitment
@@ -41,6 +41,9 @@ pipelines and study kind `fresh_synthetic_conformance`:
   policy fixes #46/#69, collection operations #47 and bounded repair #62. Its
   20-file commitment includes the new `assurance/evidence_policy.py` dependency:
   `2f3488dda8397ea7a414a1e187946929444278dda3beb974951472be682ebe8b`.
+- `verified-tool-admission/1.2` binds the same 20 files after the reviewed
+  [date and array-index boundary fixes](semantic-boundaries.md). Its commitment is
+  `eefba9e31150c287ef278c2ec9fca75895236017b093edbe309d222132657c5e`.
 
 The caller must select the profile matching its reviewed source. No automatic
 upgrade, fallback, caller-supplied replacement hash or dynamically accepted
@@ -54,7 +57,7 @@ and identity paths. The tool route still uses one already verified proposal,
 `max_attempts=1`, no repair-capable runtime and only exact-proposal/action gates.
 It supplies no semantic assertions to trigger the new deterministic repair
 sequence. Its durable proof rejects repaired or extra decisions. Consequently
-the raw native answer remains fixed before the route switch under both profiles.
+the raw native answer remains fixed before the route switch under all profiles.
 The evidence-policy module is now imported by gates and included in controller
 identity, so the new profile must pin it even though this narrow route does not
 opt into its claim gate. This review adds no new outcome or execution authority.

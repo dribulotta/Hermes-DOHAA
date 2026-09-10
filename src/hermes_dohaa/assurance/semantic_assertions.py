@@ -627,7 +627,7 @@ def _evaluate(
     if op == "add_days":
         start = _date(values[0], op)
         days = _bounded_days(values[1], op)
-        return (start + timedelta(days=days)).isoformat()
+        return _shift_date(start, days, op).isoformat()
     if op == "add_business_days":
         start = _date(values[0], op)
         days = _bounded_days(values[1], op)
@@ -638,7 +638,7 @@ def _evaluate(
         remaining = abs(days)
         current = start
         while remaining:
-            current += timedelta(days=step)
+            current = _shift_date(current, step, op)
             if current.weekday() < 5 and current not in holidays:
                 remaining -= 1
         return current.isoformat()
@@ -731,7 +731,7 @@ def _resolve_pointer(root: Any, pointer: str, source: str) -> Any:
                 )
             current = current[token]
         elif isinstance(current, list):
-            if not token.isdigit() or (len(token) > 1 and token.startswith("0")):
+            if not token.isascii() or not token.isdigit() or (len(token) > 1 and token.startswith("0")):
                 raise SemanticEvaluationError(
                     "reference.invalid_index",
                     source=source,
@@ -865,6 +865,15 @@ def _bounded_number(value: Any, operation: str) -> None:
             operation=operation,
             maximum_absolute_exponent=100,
         )
+
+
+def _shift_date(value: date, days: int, operation: str) -> date:
+    try:
+        return value + timedelta(days=days)
+    except OverflowError as exc:
+        raise SemanticEvaluationError(
+            "temporal.date_out_of_range", operation=operation,
+        ) from exc
 
 
 def _timestamp(value: Any, operation: str) -> datetime:
