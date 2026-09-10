@@ -12,7 +12,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import shadow
-from .native_tool_contract import TOOL_POLICY_VERSION
+from .native_tool_contract import TOOL_POLICY_VERSIONS
+from .native_reasoning import binary_reasoning, reasoning_enabled, verify_binary_catalog
 from .native_progress import ProgressWriter
 from .native_response_format import native_request_overrides
 from .native_prompt import (FAILURE_CODES, MAX_WIRE, MAX_RESPONSE_WIRE, MAX_WORKER_TRACE,
@@ -63,7 +64,7 @@ def profile_checks(agent):
 def native_model_configuration(policy):
     model = {'default': policy['model'], 'provider': 'custom', 'base_url': policy['endpoint'],
              'api_key': 'credential-supplied-only-in-memory', 'lmstudio_load_mode': 'jit'}
-    if policy['schema_version'] in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
+    if policy['schema_version'] in ('hermes-native-shadow-policy/1.2', *TOOL_POLICY_VERSIONS):
         model.update(provider='lmstudio', context_length=policy['context_length'])
     return model
 
@@ -71,7 +72,7 @@ def native_model_configuration(policy):
 def model_profile_checks(agent, policy):
     if not profile_checks(agent) or agent.model != policy['model']:
         return False
-    if policy['schema_version'] in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
+    if policy['schema_version'] in ('hermes-native-shadow-policy/1.2', *TOOL_POLICY_VERSIONS):
         configured = getattr(agent, '_config_context_length', None)
         effective = getattr(getattr(agent, 'context_compressor', None), 'context_length', None)
         return (getattr(agent, 'provider', None) == 'lmstudio'
@@ -89,6 +90,9 @@ class Guard:
         self.response_observed = 0
         self.generation_failure = None
         self.progress = progress
+        self.reasoning_catalog_bytes = b''
+        self.reasoning_preflight_passed = False
+        self.reasoning_preflight_failed = False
 
     def report_progress(self, stage, http_status=None):
         if self.progress is not None:
@@ -139,6 +143,8 @@ class Guard:
             destination = urlsplit(str(request.url))
             if (destination.scheme, destination.netloc) != (endpoint.scheme, endpoint.netloc) or destination.query or destination.fragment:
                 raise NativePromptError('native_shadow.network_destination')
+            capability_read = (binary_reasoning(owner.policy) and request.method == 'GET'
+                               and destination.path == '/api/v1/models')
             generation = request.method == 'POST' and destination.path == '/v1/chat/completions'
             if not generation:
                 allowed = request.method == 'GET' and destination.path in {'/v1/models', '/api/v1/models'}
@@ -147,6 +153,8 @@ class Guard:
                     allowed = value == {'name': owner.policy['model']}
                 if not allowed or owner.metadata >= 8:
                     raise NativePromptError('native_shadow.unexpected_request')
+                if capability_read and owner.reasoning_preflight_failed:
+                    raise NativePromptError('native_shadow.reasoning_capability_unverified')
                 owner.metadata += 1
             else:
                 # Retain an attempted payload for private rejection diagnosis;
@@ -154,6 +162,8 @@ class Guard:
                 if not owner.posts and len(request.content) <= MAX_WIRE:
                     owner.request_bytes = request.content
                 validate_wire_request(request.content, owner.logical, owner.policy)
+                if binary_reasoning(owner.policy) and (not owner.reasoning_preflight_passed or owner.reasoning_preflight_failed):
+                    raise NativePromptError('native_shadow.reasoning_capability_unverified')
                 if request.headers.get('authorization') != 'Bearer ' + owner.api_key:
                     raise NativePromptError('native_shadow.credential_binding')
                 if owner.posts:
@@ -184,6 +194,14 @@ class Guard:
                         owner.report_progress('read', response.status_code)
                     if len(part) > remaining:
                         raise NativePromptError('native_shadow.wire_limit')
+                if capability_read:
+                    owner.reasoning_catalog_bytes = bytes(data)
+                    try:
+                        if response.status_code != 200:
+                            raise ValueError('capability_http_status')
+                        verify_binary_catalog(bytes(data), owner.policy)
+                    except (ValueError, shadow.ShadowError) as exc:
+                        raise NativePromptError('native_shadow.reasoning_capability_unverified') from exc
                 if generation:
                     stage = 'http_status'
                     owner.report_progress(stage, response.status_code)
@@ -194,6 +212,9 @@ class Guard:
                     owner.parsed = parse_wire_response(bytes(data), owner.policy['model'])
             except Exception as exc:
                 failed = True
+                if capability_read:
+                    owner.reasoning_preflight_failed = True
+                    owner.reasoning_preflight_passed = False
                 if generation:
                     owner.record_failure(exc, stage, getattr(response, 'status_code', None), httpx)
                 raise
@@ -203,9 +224,14 @@ class Guard:
                         response.close()
                     except Exception as exc:
                         if not failed:
+                            if capability_read:
+                                owner.reasoning_preflight_failed = True
+                                owner.reasoning_preflight_passed = False
                             if generation:
                                 owner.record_failure(exc, 'close', response.status_code, httpx)
                             raise
+            if capability_read:
+                owner.reasoning_preflight_passed = True
             if generation:
                 owner.server_finished = True
                 owner.report_progress('guard_returned', response.status_code)
@@ -272,7 +298,7 @@ def execute(config):
             agent = adapter._create_agent(requested_model=policy['model'], requested_provider=model_configuration['provider'],
                 route={'model': policy['model'], 'provider': model_configuration['provider'], 'base_url': policy['endpoint'],
                        'api_key': config['api_key']},
-                model_options={'reasoning': {'enabled': policy['reasoning_effort'] != 'none',
+                model_options={'reasoning': {'enabled': reasoning_enabled(policy),
                                              'effort': policy['reasoning_effort']}},
                 ephemeral_system_prompt=prompt_frame(request), session_id=request['request_id'])
         with setup_phase(result, 'configure_agent'):
@@ -304,6 +330,9 @@ def execute(config):
                   generation_failure=guard.generation_failure,
                   wire_request_base64=base64.b64encode(guard.request_bytes).decode('ascii'),
                   wire_response_base64=base64.b64encode(guard.response_bytes).decode('ascii'))
+    if binary_reasoning(policy):
+        result.update(reasoning_catalog_base64=base64.b64encode(guard.reasoning_catalog_bytes).decode('ascii'),
+                      reasoning_preflight_passed=guard.reasoning_preflight_passed and not guard.reasoning_preflight_failed)
     progress.close()
     return result
 

@@ -1,5 +1,6 @@
 """Single fixed syntax contract shared by the native worker and host parser."""
 TOOL_POLICY_VERSION = "hermes-native-tool-policy/1.0"
+TOOL_POLICY_VERSIONS = (TOOL_POLICY_VERSION, 'hermes-native-tool-policy/1.1')
 VERSION = 'controlled-tool-proposal/1.0'
 MAX_BYTES = 16384
 MAX_INTEGER = 2**31 - 1

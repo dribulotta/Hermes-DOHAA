@@ -25,7 +25,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from . import collection, shadow
-from .native_tool_contract import TOOL_POLICY_VERSION
+from .native_tool_contract import TOOL_POLICY_VERSIONS
+from .native_reasoning import binary_reasoning, reasoning_enabled, verify_binary_catalog
 from .native_progress import MAX_PROGRESS_BYTES, ProgressChannel
 from .native_response_format import response_format_for_policy
 
@@ -92,10 +93,13 @@ def validate_native_policy(data: bytes, expected_sha256: str):
     fields = {'schema_version', 'native_commit', 'bridge_sha256', 'model', 'endpoint',
         'reasoning_effort', 'seed', 'temperature', 'top_p', 'max_tokens', 'request_timeout_seconds',
         'worker_timeout_seconds', 'request_limit', 'worker_uid', 'worker_gid', 'exclusive_backend'}
-    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.1','hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
+    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.1','hermes-native-shadow-policy/1.2', *TOOL_POLICY_VERSIONS):
         fields.add('response_contract')
-    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
+    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.2', *TOOL_POLICY_VERSIONS):
         fields.add('context_length')
+    if binary_reasoning(policy):
+        fields.add('reasoning_model_sha256')
+        shadow._digest(policy.get('reasoning_model_sha256'))
     shadow._fields(policy, fields)
     try:
         response_format_for_policy(policy)
@@ -106,7 +110,7 @@ def validate_native_policy(data: bytes, expected_sha256: str):
             or type(policy['native_commit']) is not str
             or re.fullmatch('[0-9a-f]{40}', policy['native_commit']) is None
             or type(policy['model']) is not str or not 1 <= len(policy['model']) <= 256
-            or type(policy['reasoning_effort']) is not str or policy['reasoning_effort'] not in _REASONS):
+            or type(policy['reasoning_effort']) is not str or policy['reasoning_effort'] not in ({'off', 'on'} if binary_reasoning(policy) else _REASONS)):
         raise NativePromptError('native_shadow.policy_invalid')
     for name, low, high in (('seed', 0, 2**31 - 1), ('max_tokens', 1, 16384),
             ('request_timeout_seconds', 1, 600), ('worker_timeout_seconds', 2, 720),
@@ -116,7 +120,7 @@ def validate_native_policy(data: bytes, expected_sha256: str):
     for name, low, high in (('temperature', 0, 2), ('top_p', 0, 1)):
         if type(policy[name]) not in (int, float) or not low <= policy[name] <= high:
             raise NativePromptError('native_shadow.policy_invalid')
-    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.2', TOOL_POLICY_VERSION):
+    if policy.get('schema_version') in ('hermes-native-shadow-policy/1.2', *TOOL_POLICY_VERSIONS):
         context = policy['context_length']
         if type(context) is not int or not policy['max_tokens'] < context <= 262144:
             raise NativePromptError('native_shadow.policy_invalid')
@@ -166,7 +170,7 @@ def validate_wire_request(data: bytes, logical: dict[str, Any], policy: dict[str
             or set(raw) - allowed or type(raw.get('stream')) is not bool
             or ('stream_options' in raw and raw['stream_options'] != {'include_usage': True})
             or ('think' in raw and (type(raw['think']) is not bool
-                                    or raw['think'] != (policy['reasoning_effort'] != 'none')))
+                                    or raw['think'] != reasoning_enabled(policy)))
             or raw.get('tools') or raw.get('functions') or raw.get('tool_choice') not in (None, 'none')
             or raw.get('function_call') not in (None, 'none')):
         raise NativePromptError('native_shadow.wire_parameters')
@@ -265,7 +269,15 @@ def verify_worker_terminal(data, request_bytes, collection_sha256, policy, runti
     wire_response = base64.b64decode(trace['wire_response_base64'], validate=True)
     validate_wire_request(wire_request, request, policy)
     parsed = parse_wire_response(wire_response, policy['model'])
-    if policy['reasoning_effort'] == 'none' and parsed['reasoning_characters']:
+    if binary_reasoning(policy):
+        try:
+            if trace.get('reasoning_preflight_passed') is not True:
+                raise ValueError('reasoning_preflight_missing')
+            catalog = base64.b64decode(trace.get('reasoning_catalog_base64', ''), validate=True)
+            verify_binary_catalog(catalog, policy)
+        except (ValueError, TypeError, shadow.ShadowError) as exc:
+            raise NativePromptError('native_shadow.reasoning_capability_unverified') from exc
+    if not reasoning_enabled(policy) and parsed['reasoning_characters']:
         raise NativePromptError('native_shadow.reasoning_mismatch')
     if type(trace.get('actual_requests')) is not int or trace['actual_requests'] != 1:
         raise NativePromptError('native_shadow.native_result_unverified')
@@ -327,7 +339,7 @@ def verified_tool_session(evidence_dir, collection_sha256, policy, policy_sha256
 
 def verified_tool_terminal(evidence_dir, request_bytes, collection_sha256, policy, policy_sha256):
     """Read adapter-created evidence from a fixed host-owned directory only."""
-    if policy.get('schema_version') != TOOL_POLICY_VERSION:
+    if policy.get('schema_version') not in TOOL_POLICY_VERSIONS:
         raise NativePromptError('native_tool.contract_required')
     root = protected_directory(evidence_dir)
     request_sha = shadow._hash(request_bytes)
@@ -378,6 +390,11 @@ class NativePromptAdapter:
         catalog = self._http(f'{url.scheme}://{url.netloc}/api/v1/models')
         if type(catalog) is not dict or type(catalog.get('models')) is not list:
             raise NativePromptError('native_shadow.catalog_invalid')
+        if binary_reasoning(self.policy):
+            try:
+                verify_binary_catalog(shadow._canonical(catalog), self.policy)
+            except (ValueError, shadow.ShadowError) as exc:
+                raise NativePromptError('native_shadow.reasoning_capability_unverified') from exc
         loaded, seen = {}, set()
         for model in catalog['models']:
             if type(model) is not dict or type(model.get('key')) is not str or model['key'] in seen:
@@ -431,7 +448,7 @@ class NativePromptAdapter:
         for path in target.rglob('*'):
             os.chmod(path, 0o555 if path.is_dir() else 0o444)
         os.chmod(target, 0o555)
-        if self.policy['schema_version'] == TOOL_POLICY_VERSION:
+        if self.policy['schema_version'] in TOOL_POLICY_VERSIONS:
             shadow._publish(self.evidence_dir / 'session.json', shadow._canonical({
                 'schema_version': 'hermes-native-tool-session/1.0',
                 'native_commit': head, 'bridge_sha256': self.policy['bridge_sha256'],
@@ -442,7 +459,7 @@ class NativePromptAdapter:
 
     def generate(self, request_bytes: bytes):
         request = validate_request(request_bytes, self.collection_sha256)
-        if self.policy['schema_version'] == TOOL_POLICY_VERSION:
+        if self.policy['schema_version'] in TOOL_POLICY_VERSIONS:
             verified_tool_session(self.evidence_dir, self.collection_sha256, self.policy, self.runtime_policy_sha256)
         if self.state != 'idle' or self.calls >= self.policy['request_limit']:
             raise NativePromptError('native_shadow.not_ready')
@@ -517,7 +534,7 @@ class NativePromptAdapter:
             raise NativePromptError('native_shadow.residency_changed')
         self.owned = set(current)
         self.state = 'idle'
-        if self.policy['schema_version'] == TOOL_POLICY_VERSION:
+        if self.policy['schema_version'] in TOOL_POLICY_VERSIONS:
             session = protected_read(self.evidence_dir / 'session.json')
             proof = {'schema_version': 'hermes-native-tool-evidence/1.0',
                      'request_sha256': shadow._hash(request_bytes),

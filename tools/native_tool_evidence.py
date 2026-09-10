@@ -12,7 +12,7 @@ from pathlib import Path
 import sqlite3
 
 from hermes_dohaa.learning import collection, native_prompt as native, shadow
-from hermes_dohaa.learning.native_tool_contract import TOOL_POLICY_VERSION
+from hermes_dohaa.learning.native_tool_contract import TOOL_POLICY_VERSIONS
 from tools.controlled_tools import Conflict
 from tools.host_steps import HostStepStore, RequestBinding, TerminalEvidence
 from tools.native_model_residency import ModelResidency
@@ -31,7 +31,7 @@ class NativeToolEvidenceBridge:
         self.policy_bytes = bytes(policy_bytes)
         self.policy_sha = shadow._hash(self.policy_bytes)
         self.policy = native.validate_native_policy(self.policy_bytes, self.policy_sha)
-        if self.policy['schema_version'] != TOOL_POLICY_VERSION:
+        if self.policy['schema_version'] not in TOOL_POLICY_VERSIONS:
             raise Conflict('fixed_native_tool_policy_required')
         self.collection_sha = shadow._hash(collection_policy_bytes)
         cp = shadow._json(collection_policy_bytes, self.collection_sha)

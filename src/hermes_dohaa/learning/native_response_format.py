@@ -1,6 +1,7 @@
 """Trusted fixed response schemas, not arbitrary caller-provided generation rules."""
 
-from .native_tool_contract import TOOL_POLICY_VERSION, VERSION as TOOL_CONTRACT, tool_response_format
+from .native_tool_contract import TOOL_POLICY_VERSIONS, VERSION as TOOL_CONTRACT, tool_response_format
+from .native_reasoning import binary_reasoning, reasoning_enabled
 
 DOCUMENT_RESPONSE_CONTRACT = 'document-stream-proposal/1.0'
 
@@ -33,7 +34,7 @@ def response_format_for_policy(policy):
     if (version in ('hermes-native-shadow-policy/1.1', 'hermes-native-shadow-policy/1.2')
             and policy.get('response_contract') == DOCUMENT_RESPONSE_CONTRACT):
         return document_response_format()
-    if version == TOOL_POLICY_VERSION and policy.get('response_contract') == TOOL_CONTRACT:
+    if version in TOOL_POLICY_VERSIONS and policy.get('response_contract') == TOOL_CONTRACT:
         return tool_response_format()
     raise ValueError('unsupported response contract')
 
@@ -43,4 +44,7 @@ def native_request_overrides(policy):
     response_format = response_format_for_policy(policy)
     if response_format is not None:
         overrides['response_format'] = response_format
+    if binary_reasoning(policy):
+        reasoning_enabled(policy)  # Reject unknown modes before native translation.
+        overrides['reasoning_effort'] = policy['reasoning_effort']
     return overrides
