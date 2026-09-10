@@ -13,7 +13,8 @@ from urllib.parse import urlsplit
 
 from . import shadow
 from .native_tool_contract import TOOL_POLICY_VERSIONS
-from .native_reasoning import binary_reasoning, reasoning_enabled, verify_binary_catalog
+from .native_reasoning import (binary_reasoning, compatibility_reasoning, reasoning_enabled,
+                               reasoning_request_evidence, verify_binary_catalog)
 from .native_progress import ProgressWriter
 from .native_response_format import native_request_overrides
 from .native_prompt import (FAILURE_CODES, MAX_WIRE, MAX_RESPONSE_WIRE, MAX_WORKER_TRACE,
@@ -333,6 +334,8 @@ def execute(config):
     if binary_reasoning(policy):
         result.update(reasoning_catalog_base64=base64.b64encode(guard.reasoning_catalog_bytes).decode('ascii'),
                       reasoning_preflight_passed=guard.reasoning_preflight_passed and not guard.reasoning_preflight_failed)
+    if compatibility_reasoning(policy):
+        result['reasoning_request_evidence'] = reasoning_request_evidence(policy)
     progress.close()
     return result
 

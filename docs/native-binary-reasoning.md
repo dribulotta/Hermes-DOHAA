@@ -1,5 +1,53 @@
 # Explicit binary reasoning for the native tool adapter
 
+## Compatibility contract after the endpoint rejection
+
+The literal `/1.1` candidate below was rejected by the tested chat-completions
+endpoint with HTTP 400: `off` is not in its accepted generic-effort vocabulary.
+Catalog capabilities are model settings, not proof of API parameter acceptance.
+The old candidate remains identifiable for historical evidence; its literal
+values must not be presented as a working compatibility fix.
+
+Opt-in `hermes-native-tool-policy/1.2` instead separates `reasoning_intent` (`off`
+or `on`) from `reasoning_effort` on the wire (`none` or `medium`, respectively).
+It requires `reasoning_contract: lmstudio-binary-via-generic-effort/1.0` and the
+same exact model/capability commitment. Both the host and worker require binary
+capabilities with declared default `on`. Unknown, contradictory or changed
+settings are rejected before generation; no missing field selects a fallback.
+
+This contract explicitly acknowledges the observed backend limitation:
+`medium` is accepted by the endpoint but unsupported as an intensity by this
+binary model, which reported falling back to its declared default `on`.
+It **does not remove or hide that warning, repair the server, or claim an
+independently forced internal on setting**. It is a compatible request strategy
+with a declared default dependency. Other builds/models need separate validation.
+
+Worker traces contain fixed `reasoning_request_evidence`: binary intention,
+actual wire value, committed default, whether on depends on that default, and
+`effective_mode_attested: false`. Terminal verification recomputes this record,
+rechecks raw catalog/request/response bytes, and rejects fabricated attestation.
+Returned reasoning is counted independently; zero returned characters is not a
+proof about hidden internal computation. The off contract still rejects a
+response that contains returned reasoning.
+
+The planner requires profile library `/1.2` for these policies, rejects mixed
+versions, and emits plan `/1.2` entries with `reasoning_mode`, `reasoning_effort`
+and `on_depends_on_declared_default`. The fixed rule keys `none`/`medium` retain
+their identity; they do not become reasoning-intensity claims. Reservations,
+sampling, context, response syntax, permissions and host recovery are unchanged.
+
+The regression suite includes a synthetic copy of the observed structured 400
+error, denial of a second send, both mappings, committed-default mismatch,
+evidence tampering, fixed budgets and privileged host recovery/unload. A fresh
+live probe must establish operational acceptance separately. Any later quality
+study compares these declared request strategies and must retain the dependency
+and effective-setting limitation; historical cohorts are not relabeled.
+
+The mapping also appears in the [native Hermes resolver](https://github.com/NousResearch/hermes-agent/blob/main/agent/lmstudio_reasoning.py).
+That implementation is a source for Hermes behavior, not server attestation.
+
+## Historical literal candidate `/1.1`
+
 `hermes-native-tool-policy/1.1` is an opt-in development contract for models
 whose catalog advertises exactly `off` and `on`. Its `reasoning_effort` is one
 of those literal values. It adds `reasoning_model_sha256`, computed with

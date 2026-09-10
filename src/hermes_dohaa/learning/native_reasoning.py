@@ -1,20 +1,34 @@
 """Opt-in binary intent and bounded catalog evidence; no server attestation.
 
-Only exact catalog keys are admitted. This module never aliases a model, uses a
-default, dispatches a request, or treats returned thought text as effective mode.
+Only exact catalog keys are admitted. Defaults are never substituted silently:
+the compatibility contract declares its dependency on a committed default-on.
+No request is dispatched here and returned thought text is not mode attestation.
 """
 from . import shadow
 
 BINARY_POLICY_VERSION = 'hermes-native-tool-policy/1.1'
+COMPATIBILITY_POLICY_VERSION = 'hermes-native-tool-policy/1.2'
+COMPATIBILITY_CONTRACT = 'lmstudio-binary-via-generic-effort/1.0'
 MAX_CATALOG_BYTES = 512 * 1024
 MAX_MODELS = 256
 
 
 def binary_reasoning(policy):
-    return policy.get('schema_version') == BINARY_POLICY_VERSION
+    return policy.get('schema_version') in (BINARY_POLICY_VERSION, COMPATIBILITY_POLICY_VERSION)
+
+
+def compatibility_reasoning(policy):
+    return policy.get('schema_version') == COMPATIBILITY_POLICY_VERSION
 
 
 def reasoning_enabled(policy):
+    if compatibility_reasoning(policy):
+        mode = policy.get('reasoning_intent')
+        if (type(mode) is not str or mode not in ('off', 'on')
+                or policy.get('reasoning_contract') != COMPATIBILITY_CONTRACT
+                or policy.get('reasoning_effort') != {'off': 'none', 'on': 'medium'}[mode]):
+            raise ValueError('explicit_compatibility_reasoning_contract_required')
+        return mode == 'on'
     if binary_reasoning(policy):
         if policy.get('reasoning_effort') not in ('off', 'on'):
             raise ValueError('binary_reasoning_mode_required')
@@ -26,6 +40,22 @@ def selector_profile(policy):
     if binary_reasoning(policy):
         return 'medium' if reasoning_enabled(policy) else 'none'
     return policy['reasoning_effort']
+
+
+def reasoning_request_evidence(policy):
+    """Describe requests, never infer the server's actual internal mode.
+
+    Medium is a compatibility wire value. For this opt-in binary/default-on
+    contract its unsupported-model-value fallback is acknowledged explicitly.
+    A returned reasoning block does not upgrade this to effective attestation.
+    """
+    if not compatibility_reasoning(policy):
+        raise ValueError('compatibility_policy_required')
+    enabled = reasoning_enabled(policy)
+    return {'schema_version': 'hermes-reasoning-request-evidence/1.0',
+            'intent': policy['reasoning_intent'], 'wire_effort': policy['reasoning_effort'],
+            'on_depends_on_declared_default': enabled, 'model_default': 'on',
+            'effective_mode_attested': False}
 
 
 def binary_model_sha256(data, model):
@@ -83,3 +113,8 @@ def verify_binary_catalog(data, policy):
     shadow._digest(expected)
     if binary_model_sha256(data, policy['model']) != expected:
         raise ValueError('reasoning_model_commitment_changed')
+    if compatibility_reasoning(policy):
+        catalog = shadow._json(data, shadow._hash(data))
+        selected = next(item for item in catalog['models'] if item['key'] == policy['model'])
+        if selected['capabilities']['reasoning']['default'] != 'on':
+            raise ValueError('explicit_default_on_dependency_unsatisfied')

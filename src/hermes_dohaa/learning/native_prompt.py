@@ -26,7 +26,8 @@ from urllib.parse import urlsplit
 
 from . import collection, shadow
 from .native_tool_contract import TOOL_POLICY_VERSIONS
-from .native_reasoning import binary_reasoning, reasoning_enabled, verify_binary_catalog
+from .native_reasoning import (binary_reasoning, compatibility_reasoning, reasoning_enabled,
+                               reasoning_request_evidence, verify_binary_catalog)
 from .native_progress import MAX_PROGRESS_BYTES, ProgressChannel
 from .native_response_format import response_format_for_policy
 
@@ -100,9 +101,12 @@ def validate_native_policy(data: bytes, expected_sha256: str):
     if binary_reasoning(policy):
         fields.add('reasoning_model_sha256')
         shadow._digest(policy.get('reasoning_model_sha256'))
+    if compatibility_reasoning(policy):
+        fields.update(('reasoning_intent', 'reasoning_contract'))
     shadow._fields(policy, fields)
     try:
         response_format_for_policy(policy)
+        reasoning_enabled(policy)
     except ValueError as exc:
         raise NativePromptError('native_shadow.policy_invalid') from exc
     if (policy['bridge_sha256'] != native_bridge_sha256()
@@ -110,7 +114,9 @@ def validate_native_policy(data: bytes, expected_sha256: str):
             or type(policy['native_commit']) is not str
             or re.fullmatch('[0-9a-f]{40}', policy['native_commit']) is None
             or type(policy['model']) is not str or not 1 <= len(policy['model']) <= 256
-            or type(policy['reasoning_effort']) is not str or policy['reasoning_effort'] not in ({'off', 'on'} if binary_reasoning(policy) else _REASONS)):
+            or type(policy['reasoning_effort']) is not str
+            or policy['reasoning_effort'] not in ({'none', 'medium'} if compatibility_reasoning(policy)
+                else {'off', 'on'} if binary_reasoning(policy) else _REASONS)):
         raise NativePromptError('native_shadow.policy_invalid')
     for name, low, high in (('seed', 0, 2**31 - 1), ('max_tokens', 1, 16384),
             ('request_timeout_seconds', 1, 600), ('worker_timeout_seconds', 2, 720),
@@ -159,6 +165,11 @@ def validate_request(data: bytes, policy_sha256: str):
 def validate_wire_request(data: bytes, logical: dict[str, Any], policy: dict[str, Any]):
     if len(data) > MAX_WIRE:
         raise NativePromptError('native_shadow.wire_limit')
+    if compatibility_reasoning(policy):
+        try:
+            reasoning_enabled(policy)
+        except ValueError as exc:
+            raise NativePromptError('native_shadow.wire_parameters') from exc
     raw = shadow._json(data, shadow._hash(data))
     expected = {name: policy[name] for name in ('model', 'reasoning_effort', 'seed',
                                               'temperature', 'top_p', 'max_tokens')}
@@ -275,6 +286,9 @@ def verify_worker_terminal(data, request_bytes, collection_sha256, policy, runti
                 raise ValueError('reasoning_preflight_missing')
             catalog = base64.b64decode(trace.get('reasoning_catalog_base64', ''), validate=True)
             verify_binary_catalog(catalog, policy)
+            if (compatibility_reasoning(policy) and not shadow._equal(
+                    trace.get('reasoning_request_evidence'), reasoning_request_evidence(policy))):
+                raise ValueError('reasoning_request_evidence_changed')
         except (ValueError, TypeError, shadow.ShadowError) as exc:
             raise NativePromptError('native_shadow.reasoning_capability_unverified') from exc
     if not reasoning_enabled(policy) and parsed['reasoning_characters']:
