@@ -8,6 +8,7 @@ from pathlib import Path
 
 from hermes_dohaa.learning import native_prompt as native,shadow
 from hermes_dohaa.learning.native_reasoning import binary_reasoning, compatibility_reasoning, selector_profile
+from hermes_dohaa.learning.native_context import fixed_context
 
 MAX_DOCUMENT_BYTES=1024*1024
 MAX_TASKS=256
@@ -101,7 +102,8 @@ def _profiles(raw,expected_sha256):
     library=_document(raw,expected_sha256)
     shadow._fields(library,{'schema_version','profiles'})
     version=library['schema_version']
-    if version not in ('hermes-reasoning-profiles/1.0','hermes-reasoning-profiles/1.1','hermes-reasoning-profiles/1.2'):
+    if version not in ('hermes-reasoning-profiles/1.0','hermes-reasoning-profiles/1.1',
+                       'hermes-reasoning-profiles/1.2','hermes-reasoning-profiles/1.3'):
         raise ValueError('profile_library_version_required')
     shadow._fields(library['profiles'],set(PROFILES))
     policies={};identities={};common=None
@@ -111,7 +113,8 @@ def _profiles(raw,expected_sha256):
         if 'context_length' not in policy or 'response_contract' not in policy:
             raise ValueError('explicit_context_and_contract_required')
         if (binary_reasoning(policy)!=(version!='hermes-reasoning-profiles/1.0')
-                or compatibility_reasoning(policy)!=(version=='hermes-reasoning-profiles/1.2')):
+                or compatibility_reasoning(policy)!=(version in ('hermes-reasoning-profiles/1.2','hermes-reasoning-profiles/1.3'))
+                or fixed_context(policy)!=(version=='hermes-reasoning-profiles/1.3')):
             raise ValueError('profile_mode_version_mismatch')
         if selector_profile(policy)!=name:raise ValueError('profile_mode_mismatch')
         factors={'reasoning_effort','max_tokens'}
@@ -182,7 +185,8 @@ def build_plan(*,workload_bytes,workload_sha256,profiles_bytes,profiles_sha256,r
                                on_depends_on_declared_default=policy['reasoning_intent']=='on')
         elif binary_reasoning(policy):
             entries[-1]['reasoning_mode']=policy['reasoning_effort']
-    version=('hermes-reasoning-budget-plan/1.2' if compatibility_reasoning(policy) else
+    version=('hermes-reasoning-budget-plan/1.3' if fixed_context(policy) else
+             'hermes-reasoning-budget-plan/1.2' if compatibility_reasoning(policy) else
              'hermes-reasoning-budget-plan/1.1' if binary_reasoning(policy) else 'hermes-reasoning-budget-plan/1.0')
     return shadow._canonical(dict(schema_version=version,source_sha256=source_sha256(),
         workload_sha256=workload_sha256,profiles_sha256=profiles_sha256,rules_sha256=rules_sha256,strategy=strategy,

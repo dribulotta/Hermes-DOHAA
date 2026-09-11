@@ -5,6 +5,7 @@ the compatibility contract declares its dependency on a committed default-on.
 No request is dispatched here and returned thought text is not mode attestation.
 """
 from . import shadow
+from .native_context import POLICY_VERSION as FIXED_CONTEXT_POLICY_VERSION
 
 BINARY_POLICY_VERSION = 'hermes-native-tool-policy/1.1'
 COMPATIBILITY_POLICY_VERSION = 'hermes-native-tool-policy/1.2'
@@ -14,11 +15,12 @@ MAX_MODELS = 256
 
 
 def binary_reasoning(policy):
-    return policy.get('schema_version') in (BINARY_POLICY_VERSION, COMPATIBILITY_POLICY_VERSION)
+    return policy.get('schema_version') in (BINARY_POLICY_VERSION, COMPATIBILITY_POLICY_VERSION,
+                                          FIXED_CONTEXT_POLICY_VERSION)
 
 
 def compatibility_reasoning(policy):
-    return policy.get('schema_version') == COMPATIBILITY_POLICY_VERSION
+    return policy.get('schema_version') in (COMPATIBILITY_POLICY_VERSION, FIXED_CONTEXT_POLICY_VERSION)
 
 
 def reasoning_enabled(policy):
