@@ -32,7 +32,7 @@ requires a new review; a caller cannot supply a source root, alternate hash or
 intervention label. Source bytes normalize CRLF to LF, matching project source
 identity conventions.
 
-Version `hermes-route-attribution-protocol/1.0` supports three explicitly selected
+Version `hermes-route-attribution-protocol/1.0` supports four explicitly selected
 pipelines and study kind `fresh_synthetic_conformance`:
 
 - `verified-tool-admission/1.0` preserves the original 19-file review commitment
@@ -44,6 +44,9 @@ pipelines and study kind `fresh_synthetic_conformance`:
 - `verified-tool-admission/1.2` binds the same 20 files after the reviewed
   [date and array-index boundary fixes](semantic-boundaries.md). Its commitment is
   `eefba9e31150c287ef278c2ec9fca75895236017b093edbe309d222132657c5e`.
+- `verified-tool-admission/1.3` binds the same 20 files after the reviewed
+  [semantic selector admission fix](semantic-type-admission.md). Its commitment is
+  `014d12c68af677689f039f7ce8fbed254c3150e7fba31e00bdb34b3022924a58`.
 
 The caller must select the profile matching its reviewed source. No automatic
 upgrade, fallback, caller-supplied replacement hash or dynamically accepted

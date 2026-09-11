@@ -44,10 +44,13 @@ INTEGRATED_AUDITED_SOURCE_SHA256 = '2f3488dda8397ea7a414a1e187946929444278dda3be
 # Reviewed semantic boundary fixes: date overflow and ASCII-only array indices.
 # This remains the same downstream one-proposal pipeline, with a new source pin.
 BOUNDED_AUDITED_SOURCE_SHA256 = 'eefba9e31150c287ef278c2ec9fca75895236017b093edbe309d222132657c5e'
+# Reviewed string-type admission for the five semantic-language selectors.
+ADMISSION_AUDITED_SOURCE_SHA256 = '014d12c68af677689f039f7ce8fbed254c3150e7fba31e00bdb34b3022924a58'
 _PROFILES = {
     'verified-tool-admission/1.0': (AUDITED_FILES, AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.1': (INTEGRATED_AUDITED_FILES, INTEGRATED_AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.2': (INTEGRATED_AUDITED_FILES, BOUNDED_AUDITED_SOURCE_SHA256),
+    'verified-tool-admission/1.3': (INTEGRATED_AUDITED_FILES, ADMISSION_AUDITED_SOURCE_SHA256),
 }
 _PROTOCOL_FIELDS = frozenset(('schema_version', 'pipeline', 'outcome', 'study_kind', 'pairing', 'arms'))
 _COMMITMENTS = ('input_sha256', 'proposal_sha256', 'initial_state_sha256',
