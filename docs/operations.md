@@ -221,21 +221,42 @@ After any Hermes, Python, dependency, model, prompt, or policy change, repeat:
 Automatic model eviction is not proof that a prior artifact has left memory.
 Overlapping residency can introduce paging and invalidate latency comparisons.
 For capacity-constrained hosts, use the isolated slot commands documented in
-`evaluation.md` and apply this operational sequence:
+[evaluation.md](evaluation.md) with an external residency coordinator. Those
+commands do not acquire model ownership or unload instances automatically.
+Apply this sequence through the infrastructure's established procedure:
 
-1. unload all model artifacts before beginning the experiment;
-2. execute exactly one model slot;
-3. confirm that its private checkpoint was written successfully;
-4. unload that model using the infrastructure's external procedure;
-5. verify that memory has been released;
-6. repeat steps 2--5 for the next slot in protocol order;
-7. aggregate every checkpoint only after all slots are complete.
+1. verify exclusive availability and an empty backend before starting. Stop if
+   another or unidentified instance is resident; do not unload it to make room;
+2. load only the declared model and retain the exact instance identity and
+   ownership evidence before admitting generation, then execute one model slot;
+3. retain its private checkpoint and independently confirm known terminal
+   outcomes for every dispatched request, with no generation still active. A
+   checkpoint or process exit alone does not establish completion;
+4. unload only that owned instance by its retained identity after completion is
+   known, then verify that it is absent and the backend is empty. A matching
+   model name alone is not ownership evidence;
+5. proceed to the next slot in protocol order only after verified cleanup and
+   when the frozen protocol permits continuation; repeat steps 2--4;
+6. aggregate every checkpoint only after all slots are complete.
 
-Do not inspect individual outcomes before all slots finish. If a purely
-operational failure requires repeating a slot, document the failure and the
-repeat without changing any frozen policy. Never publish checkpoints. This
-barrier does not change the statistical protocol or acceptance logic; it only
-ensures that each model's measurements come from an isolated process.
+An unknown load, generation or unload outcome stops the sequence. Preserve the
+ownership and request records; do not reissue the uncertain operation, generate
+a replacement response or unload blindly. An apparently empty catalog does not
+resolve an outstanding generation. Foreign residency or a changed instance
+identity also stops progress without cleanup of that instance.
+
+The opt-in [durable residency helper](native-model-residency.md) and
+[serial block collector](native-model-blocks.md) document these ownership and
+completion boundaries for development collectors. Invoking a slot command does
+not automatically attach either helper or add their guarantees to its HTTP
+runtime; the external coordinator remains responsible for the sequence above.
+
+Do not inspect individual outcomes before all slots finish. For a known
+operational failure, preserve the failure and follow only the recovery permitted
+by the frozen protocol; this guide grants no new retry or slot-repeat authority.
+Unknown completion is not a retryable failure. Never publish checkpoints. This
+barrier leaves the statistical protocol and acceptance logic unchanged; it
+requires model isolation rather than assuming automatic eviction established it.
 
 ## Repeatable development validation
 
