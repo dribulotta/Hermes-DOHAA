@@ -121,3 +121,8 @@ and complete runtime costs including load/unload. A shared selector is not a
 DOHAA-specific contribution. If a fixed policy matches or dominates it, preserve
 that negative result. Closed studies remain unchanged; no live study is created
 by this module.
+
+The separate [planned-contrast diagnostic](planned-reasoning-contrast.md)
+revalidates adaptive and both fixed plans against the same original commitments,
+then reports whether their selected profile assignments actually differ. It
+does not modify this planner or authorize execution.
