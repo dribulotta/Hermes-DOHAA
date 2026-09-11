@@ -158,6 +158,8 @@ def parse_semantic_assertions(raw: Any) -> tuple[SemanticAssertion, ...]:
             else None
         )
         operator = item.get("operator")
+        if not isinstance(operator, str):
+            raise ValueError("semantic assertion operator must be a string")
         if operator not in ASSERTION_OPERATORS:
             raise ValueError(f"unsupported semantic assertion operator {operator!r}")
         left = _parse_expression(item.get("left"), 0, counter)
@@ -406,13 +408,15 @@ def _parse_expression(
     if not isinstance(raw, Mapping):
         raise ValueError("each semantic expression must be an object")
     op = raw.get("op")
+    if not isinstance(op, str):
+        raise ValueError("semantic expression op must be a string")
     if op not in EXPRESSION_OPERATORS:
         raise ValueError(f"unsupported semantic expression operator {op!r}")
 
     if op == "ref":
         _require_exact_fields(raw, {"op", "source", "pointer"}, "ref expression")
         source = raw.get("source")
-        if source not in {"inputs", "result"}:
+        if not isinstance(source, str) or source not in {"inputs", "result"}:
             raise ValueError("ref source must be 'inputs' or 'result'")
         pointer = _validate_pointer(raw.get("pointer"), "ref pointer")
         if source == "inputs" and _is_reserved_input_pointer(pointer):
@@ -460,11 +464,13 @@ def _parse_expression(
         pointer = _validate_pointer(raw.get("pointer"), f"{op} pointer")
     if op == "filter":
         comparator = raw.get("comparator")
+        if not isinstance(comparator, str):
+            raise ValueError("filter comparator must be a string")
         if comparator not in FILTER_OPERATORS:
             raise ValueError(f"unsupported filter comparator {comparator!r}")
     if op == "sort_by":
         order = raw.get("order", "ascending")
-        if order not in {"ascending", "descending"}:
+        if not isinstance(order, str) or order not in {"ascending", "descending"}:
             raise ValueError("sort_by order must be ascending or descending")
     if op == "at":
         index = raw.get("index")
