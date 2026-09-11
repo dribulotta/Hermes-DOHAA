@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "derived-missing-data",
+  "objective": "This contract handles incomplete inputs only. Report absent required keys alphabetically and the declared insufficient-data status. A present null counts as present; type validation is a separate policy. Return no claims, evidence or actions.",
+  "inputs": {
+    "data": {
+      "rate_per_kg": 175
+    },
+    "required_fields": [
+      "weight_kg",
+      "rate_per_kg"
+    ],
+    "policy": {
+      "missing_status": "insufficient_data",
+      "zero": 0
+    },
+    "result_spec": {
+      "required_keys": [
+        "status",
+        "missing"
+      ],
+      "additional_keys": false,
+      "types": {
+        "status": "string",
+        "missing": "array"
+      }
+    },
+    "semantic_assertions": [
+      {
+        "assertion_id": "missing-data.status",
+        "operator": "equals",
+        "left": {
+          "op": "ref",
+          "source": "result",
+          "pointer": "/status"
+        },
+        "right": {
+          "op": "ref",
+          "source": "inputs",
+          "pointer": "/policy/missing_status"
+        }
+      },
+      {
+        "assertion_id": "missing-data.missing",
+        "operator": "equals",
+        "left": {
+          "op": "ref",
+          "source": "result",
+          "pointer": "/missing"
+        },
+        "right": {
+          "op": "sort_by",
+          "args": [
+            {
+              "op": "difference",
+              "args": [
+                {
+                  "op": "ref",
+                  "source": "inputs",
+                  "pointer": "/required_fields"
+                },
+                {
+                  "op": "keys",
+                  "args": [
+                    {
+                      "op": "ref",
+                      "source": "inputs",
+                      "pointer": "/data"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "pointer": ""
+        }
+      },
+      {
+        "assertion_id": "missing-data.nonempty",
+        "operator": "greater_than",
+        "left": {
+          "op": "length",
+          "args": [
+            {
+              "op": "ref",
+              "source": "result",
+              "pointer": "/missing"
+            }
+          ]
+        },
+        "right": {
+          "op": "ref",
+          "source": "inputs",
+          "pointer": "/policy/zero"
+        }
+      }
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "criterion_id": "derived-values",
+      "description": "Every result field must satisfy its visible input-derived formula.",
+      "required_evidence": []
+    }
+  ],
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "shell.execute",
+    "external.publish"
+  ],
+  "risk_level": "low",
+  "max_attempts": 2,
+  "requires_human_approval": false
+}

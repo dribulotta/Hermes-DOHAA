@@ -50,6 +50,11 @@ The `v0.1` bootstrap implements:
   unique-case aggregation, and automatic success-criterion assessment;
 - a standard-library-only runtime with unit and integration tests.
 
+For factual outputs derived from tables, dates or missing fields, declare explicit
+[collection derivations](docs/collection-derivations.md). Shape checks and acceptance
+prose alone do not verify computed values; the examples show input-derived formulas
+and keep scoring references outside the contracts.
+
 ```mermaid
 flowchart TD
     C["Task contract"] --> O["DOHAA controller"]
@@ -215,6 +220,7 @@ running the cognitive runtime in a separate, restricted trust domain:
 - [Isolated deployment guide](docs/deployment.md)
 - [Operations runbook](docs/operations.md)
 - [Governed learning loop](docs/learning-loop.md)
+- [Contract-owned evidence and factual claim bindings](docs/bound-evidence-policy.md)
 - [Comparative quality evaluation](docs/evaluation.md)
 - [Runtime environment example](deploy/env/runtime.env.example)
 - [Hardened systemd service example](deploy/systemd/hermes-runtime.service.example)

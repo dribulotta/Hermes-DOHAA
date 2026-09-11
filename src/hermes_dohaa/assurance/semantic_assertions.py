@@ -42,6 +42,10 @@ EXPRESSION_OPERATORS = {
     "sort_by",
     "at",
     "unique",
+    "keys",
+    "difference",
+    "lookup_many",
+    "dot_product",
     "duration_minutes",
     "add_days",
     "add_business_days",
@@ -154,6 +158,8 @@ def parse_semantic_assertions(raw: Any) -> tuple[SemanticAssertion, ...]:
             else None
         )
         operator = item.get("operator")
+        if not isinstance(operator, str):
+            raise ValueError("semantic assertion operator must be a string")
         if operator not in ASSERTION_OPERATORS:
             raise ValueError(f"unsupported semantic assertion operator {operator!r}")
         left = _parse_expression(item.get("left"), 0, counter)
@@ -402,13 +408,15 @@ def _parse_expression(
     if not isinstance(raw, Mapping):
         raise ValueError("each semantic expression must be an object")
     op = raw.get("op")
+    if not isinstance(op, str):
+        raise ValueError("semantic expression op must be a string")
     if op not in EXPRESSION_OPERATORS:
         raise ValueError(f"unsupported semantic expression operator {op!r}")
 
     if op == "ref":
         _require_exact_fields(raw, {"op", "source", "pointer"}, "ref expression")
         source = raw.get("source")
-        if source not in {"inputs", "result"}:
+        if not isinstance(source, str) or source not in {"inputs", "result"}:
             raise ValueError("ref source must be 'inputs' or 'result'")
         pointer = _validate_pointer(raw.get("pointer"), "ref pointer")
         if source == "inputs" and _is_reserved_input_pointer(pointer):
@@ -456,11 +464,13 @@ def _parse_expression(
         pointer = _validate_pointer(raw.get("pointer"), f"{op} pointer")
     if op == "filter":
         comparator = raw.get("comparator")
+        if not isinstance(comparator, str):
+            raise ValueError("filter comparator must be a string")
         if comparator not in FILTER_OPERATORS:
             raise ValueError(f"unsupported filter comparator {comparator!r}")
     if op == "sort_by":
         order = raw.get("order", "ascending")
-        if order not in {"ascending", "descending"}:
+        if not isinstance(order, str) or order not in {"ascending", "descending"}:
             raise ValueError("sort_by order must be ascending or descending")
     if op == "at":
         index = raw.get("index")
@@ -492,6 +502,9 @@ def _argument_bounds(op: str) -> tuple[int, int]:
         "subtract",
         "divide",
         "filter",
+        "difference",
+        "lookup_many",
+        "dot_product",
         "duration_minutes",
         "add_days",
     }:
@@ -580,6 +593,38 @@ def _evaluate(
                 seen.add(key)
                 result_values.append(item)
         return result_values
+    if op == "keys":
+        mapping = _object(values[0], op)
+        return list(mapping)
+    if op == "difference":
+        collection = _array(values[0], op)
+        excluded = {_strict_key(item) for item in _array(values[1], op)}
+        return [item for item in collection if _strict_key(item) not in excluded]
+    if op == "lookup_many":
+        mapping = _object(values[0], op)
+        keys = _array(values[1], op)
+        selected = []
+        for key in keys:
+            if not isinstance(key, str):
+                raise _type_error(op, "string lookup key", key)
+            if key not in mapping:
+                raise SemanticEvaluationError("collection.lookup_missing", operation=op)
+            selected.append(mapping[key])
+        return selected
+    if op == "dot_product":
+        left = _array(values[0], op)
+        right = _array(values[1], op)
+        if len(left) != len(right):
+            raise SemanticEvaluationError("collection.length_mismatch", operation=op)
+        total = 0
+        for first, second in zip(left, right):
+            _bounded_number(first, op)
+            _bounded_number(second, op)
+            product = first * second
+            _bounded_number(product, op)
+            total += product
+            _bounded_number(total, op)
+        return total
     if op == "duration_minutes":
         start = _timestamp(values[0], op)
         end = _timestamp(values[1], op)
@@ -588,7 +633,7 @@ def _evaluate(
     if op == "add_days":
         start = _date(values[0], op)
         days = _bounded_days(values[1], op)
-        return (start + timedelta(days=days)).isoformat()
+        return _shift_date(start, days, op).isoformat()
     if op == "add_business_days":
         start = _date(values[0], op)
         days = _bounded_days(values[1], op)
@@ -599,7 +644,7 @@ def _evaluate(
         remaining = abs(days)
         current = start
         while remaining:
-            current += timedelta(days=step)
+            current = _shift_date(current, step, op)
             if current.weekday() < 5 and current not in holidays:
                 remaining -= 1
         return current.isoformat()
@@ -692,7 +737,7 @@ def _resolve_pointer(root: Any, pointer: str, source: str) -> Any:
                 )
             current = current[token]
         elif isinstance(current, list):
-            if not token.isdigit() or (len(token) > 1 and token.startswith("0")):
+            if not token.isascii() or not token.isdigit() or (len(token) > 1 and token.startswith("0")):
                 raise SemanticEvaluationError(
                     "reference.invalid_index",
                     source=source,
@@ -763,6 +808,15 @@ def _optional_text(
     return value.strip()
 
 
+def _object(value: Any, operation: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise _type_error(operation, "object", value)
+    _bounded_collection(value, operation)
+    if any(not isinstance(key, str) for key in value):
+        raise SemanticEvaluationError("collection.invalid_object_key", operation=operation)
+    return value
+
+
 def _array(value: Any, operation: str) -> list[Any]:
     if not isinstance(value, list):
         raise _type_error(operation, "array", value)
@@ -817,6 +871,15 @@ def _bounded_number(value: Any, operation: str) -> None:
             operation=operation,
             maximum_absolute_exponent=100,
         )
+
+
+def _shift_date(value: date, days: int, operation: str) -> date:
+    try:
+        return value + timedelta(days=days)
+    except OverflowError as exc:
+        raise SemanticEvaluationError(
+            "temporal.date_out_of_range", operation=operation,
+        ) from exc
 
 
 def _timestamp(value: Any, operation: str) -> datetime:

@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "derived-stable-dedup",
+  "objective": "Keep enabled rows and their IDs in first-enabled-occurrence order. Remove later duplicates; disabled rows do not remove enabled rows. Return no claims, evidence or actions.",
+  "inputs": {
+    "policy": {
+      "enabled": true
+    },
+    "rows": [
+      {
+        "id": "R2",
+        "enabled": false
+      },
+      {
+        "id": "R5",
+        "enabled": true
+      },
+      {
+        "id": "R2",
+        "enabled": true
+      },
+      {
+        "id": "R5",
+        "enabled": true
+      },
+      {
+        "id": "R8",
+        "enabled": true
+      }
+    ],
+    "result_spec": {
+      "required_keys": [
+        "ids"
+      ],
+      "additional_keys": false,
+      "types": {
+        "ids": "array"
+      }
+    },
+    "semantic_assertions": [
+      {
+        "assertion_id": "stable-dedup.ids",
+        "operator": "equals",
+        "left": {
+          "op": "ref",
+          "source": "result",
+          "pointer": "/ids"
+        },
+        "right": {
+          "op": "unique",
+          "args": [
+            {
+              "op": "project",
+              "args": [
+                {
+                  "op": "filter",
+                  "args": [
+                    {
+                      "op": "ref",
+                      "source": "inputs",
+                      "pointer": "/rows"
+                    },
+                    {
+                      "op": "ref",
+                      "source": "inputs",
+                      "pointer": "/policy/enabled"
+                    }
+                  ],
+                  "pointer": "/enabled",
+                  "comparator": "equals"
+                }
+              ],
+              "pointer": "/id"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "acceptance_criteria": [
+    {
+      "criterion_id": "derived-values",
+      "description": "Every result field must satisfy its visible input-derived formula.",
+      "required_evidence": []
+    }
+  ],
+  "allowed_actions": [],
+  "forbidden_actions": [
+    "shell.execute",
+    "external.publish"
+  ],
+  "risk_level": "low",
+  "max_attempts": 2,
+  "requires_human_approval": false
+}

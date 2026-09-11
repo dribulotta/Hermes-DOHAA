@@ -1,0 +1,237 @@
+{
+  "actions_accepted": {
+    "dohaa": 0,
+    "simple": 0
+  },
+  "activation_authorized": false,
+  "all_18_blocks_unloaded": true,
+  "all_configurations_complete": true,
+  "case_domains": {
+    "financial": 24,
+    "registry": 24
+  },
+  "cells": [
+    {
+      "configurations": 48,
+      "correct_completions": {
+        "direct": 24,
+        "dohaa": 41,
+        "simple": 46
+      },
+      "counterfactual_generations": {
+        "direct": 48,
+        "dohaa": 61,
+        "simple": 48
+      },
+      "model": "Qwen 3.6 27B",
+      "reasoning_effort": "none"
+    },
+    {
+      "configurations": 48,
+      "correct_completions": {
+        "direct": 48,
+        "dohaa": 48,
+        "simple": 48
+      },
+      "counterfactual_generations": {
+        "direct": 48,
+        "dohaa": 48,
+        "simple": 48
+      },
+      "model": "Qwen 3.6 27B",
+      "reasoning_effort": "medium"
+    },
+    {
+      "configurations": 48,
+      "correct_completions": {
+        "direct": 22,
+        "dohaa": 36,
+        "simple": 46
+      },
+      "counterfactual_generations": {
+        "direct": 48,
+        "dohaa": 62,
+        "simple": 50
+      },
+      "model": "Qwen 3.6 35B A3B",
+      "reasoning_effort": "none"
+    },
+    {
+      "configurations": 48,
+      "correct_completions": {
+        "direct": 47,
+        "dohaa": 47,
+        "simple": 47
+      },
+      "counterfactual_generations": {
+        "direct": 48,
+        "dohaa": 48,
+        "simple": 48
+      },
+      "model": "Qwen 3.6 35B A3B",
+      "reasoning_effort": "medium"
+    },
+    {
+      "configurations": 48,
+      "correct_completions": {
+        "direct": 18,
+        "dohaa": 33,
+        "simple": 45
+      },
+      "counterfactual_generations": {
+        "direct": 48,
+        "dohaa": 64,
+        "simple": 54
+      },
+      "model": "Gemma 4 26B A4B",
+      "reasoning_effort": "none"
+    },
+    {
+      "configurations": 48,
+      "correct_completions": {
+        "direct": 42,
+        "dohaa": 45,
+        "simple": 45
+      },
+      "counterfactual_generations": {
+        "direct": 48,
+        "dohaa": 49,
+        "simple": 48
+      },
+      "model": "Gemma 4 26B A4B",
+      "reasoning_effort": "medium"
+    }
+  ],
+  "client_concurrency": 1,
+  "configurations": 288,
+  "configurations_are_not_independent_cases": true,
+  "correct_completions": {
+    "direct": 201,
+    "dohaa": 250,
+    "simple": 277
+  },
+  "counterfactual_generation_time": {
+    "direct": {
+      "median_configuration_seconds": 14.461544336,
+      "total_seconds": 7211.114743451
+    },
+    "dohaa": {
+      "median_configuration_seconds": 16.616897009,
+      "total_seconds": 7515.134015253
+    },
+    "simple": {
+      "median_configuration_seconds": 16.382546403,
+      "total_seconds": 7277.410622375
+    }
+  },
+  "counterfactual_generations": {
+    "direct": 288,
+    "dohaa": 332,
+    "simple": 296
+  },
+  "direct_failed_initial_generations": 6,
+  "direct_incorrect_emitted_proposals": 81,
+  "dohaa_reasons_when_only_simple_succeeds": {
+    "budget.exhausted": 24,
+    "repair.unsignaled_failure": 3
+  },
+  "dohaa_terminal_reason_counts": {
+    "budget.exhausted": 24,
+    "repair.unsignaled_failure": 8,
+    "run.succeeded": 250,
+    "runtime.failed": 6
+  },
+  "elapsed_seconds": 7643.393,
+  "execution_attested": false,
+  "extra_generations": {
+    "dohaa": 44,
+    "simple": 8
+  },
+  "full_preregistration_retained_before_dispatch": true,
+  "generation_ratio_dohaa_over_simple": 1.1216216216216217,
+  "improvement_probability_upper_95": 0.06050340934889431,
+  "incorrect_accepted": {
+    "dohaa": 0,
+    "simple": 0
+  },
+  "independent_empty_model_check": true,
+  "inference_scope": "conditional synthetic case generator and independent case assumptions only",
+  "installed_services_unchanged": true,
+  "integrity_audit_status": "passed",
+  "limitations": [
+    "Explicit synthetic contracts solvable by a visible-rule zero-LLM reference.",
+    "The private integrated source was tested; this is not a claim about deployed main.",
+    "No persistent learning, general intelligence, universal superiority or production readiness is established.",
+    "Summaries and hashes do not independently attest execution; private cases, requests and responses are not published.",
+    "Conditional count bounds require the declared case-model assumptions; template clustering limits generalization.",
+    "Counterfactual arm costs share initial generations and must not be summed as actual experiment cost.",
+    "Controller attempt exhaustion is distinct from native token exhaustion."
+  ],
+  "manifest_sha256": "57bcc8dba9088df7feeba4deb9d874d4beead502256c1d8d63642b1817c6c564",
+  "max_generation_requests": 864,
+  "max_generations_per_arm": 2,
+  "max_tokens_per_generation": 8192,
+  "medium_actual_generations": 145,
+  "medium_generations_with_reasoning": 145,
+  "native_commit": "f4e8eb156876a27687a9bc7db0e1b6343a9c35c0",
+  "native_token_budget_exhausted_calls": 4,
+  "native_transport_failure_count": 0,
+  "none_actual_generations": 195,
+  "none_generations_with_reasoning": 0,
+  "one_sided_exact_superiority_p": 1.0,
+  "paired_configuration_counts": {
+    "both_correct": 250,
+    "dohaa_only": 0,
+    "neither_correct": 11,
+    "simple_only": 27
+  },
+  "paired_stable_cases": {
+    "improved": 0,
+    "regressed": 5
+  },
+  "positive_criteria": {
+    "actions_accepted_max": 0,
+    "generation_ratio_max": 1.25,
+    "incorrect_accepted_max": 0,
+    "minimum_domain_delta": 0,
+    "minimum_net_additional_stable_cases": 5,
+    "one_sided_exact_p_max": 0.05
+  },
+  "protocol_sha256": "bfcfe5a206990490aca847f4d0d7c18d4043eb967150d172f57dca28fbb854ce",
+  "real_generation_requests": 340,
+  "reasoning_distinction_verified": true,
+  "schema_version": "hermes-native-ablation-public-summary/1.0",
+  "scope": "incremental rule-aware controller utility over same-gate same-helper unrestricted retry",
+  "shared_initial_failure_codes": {
+    "budget_exhausted": 4,
+    "invalid_response": 2
+  },
+  "shared_initial_generations": 288,
+  "simple_deterministic_repairs": 73,
+  "source_commit": "85a813ce14828fd57825537160080cb01f55b99b",
+  "source_tree": "2acef0788e277aacf40488176b6c7032e40c3eca",
+  "stable_cases": {
+    "dohaa": 43,
+    "simple": 48
+  },
+  "stable_cases_by_domain": {
+    "financial": {
+      "dohaa": 19,
+      "simple": 24
+    },
+    "registry": {
+      "dohaa": 24,
+      "simple": 24
+    }
+  },
+  "stable_threshold": {
+    "configurations_per_case": 6,
+    "minimum_successful_configurations": 4
+  },
+  "study_closed": true,
+  "study_date": "2026-09-08",
+  "unique_cases": 48,
+  "utility_verdict": "minimum_gain_ruled_out_under_case_model",
+  "zero_llm_reference_cases": 48,
+  "zero_llm_reference_correct": 48
+}
