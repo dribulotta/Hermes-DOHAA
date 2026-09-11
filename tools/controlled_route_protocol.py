@@ -46,11 +46,19 @@ INTEGRATED_AUDITED_SOURCE_SHA256 = '2f3488dda8397ea7a414a1e187946929444278dda3be
 BOUNDED_AUDITED_SOURCE_SHA256 = 'eefba9e31150c287ef278c2ec9fca75895236017b093edbe309d222132657c5e'
 # Reviewed string-type admission for the five semantic-language selectors.
 ADMISSION_AUDITED_SOURCE_SHA256 = '014d12c68af677689f039f7ce8fbed254c3150e7fba31e00bdb34b3022924a58'
+# Opt-in fixed context is enforced before dispatch and on original terminal
+# bytes. Include the instance builder and reasoning dependencies in this pin.
+CONTEXT_AUDITED_FILES = tuple(sorted((*INTEGRATED_AUDITED_FILES,
+    'src/hermes_dohaa/learning/native_context.py',
+    'src/hermes_dohaa/learning/native_reasoning.py',
+    'src/hermes_dohaa/learning/native_worker.py')))
+CONTEXT_AUDITED_SOURCE_SHA256 = '870e11405406ed247c29c79c50d985f522b9f35099026dd45cb3d87f7a0de2ec'
 _PROFILES = {
     'verified-tool-admission/1.0': (AUDITED_FILES, AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.1': (INTEGRATED_AUDITED_FILES, INTEGRATED_AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.2': (INTEGRATED_AUDITED_FILES, BOUNDED_AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.3': (INTEGRATED_AUDITED_FILES, ADMISSION_AUDITED_SOURCE_SHA256),
+    'verified-tool-admission/1.4': (CONTEXT_AUDITED_FILES, CONTEXT_AUDITED_SOURCE_SHA256),
 }
 _PROTOCOL_FIELDS = frozenset(('schema_version', 'pipeline', 'outcome', 'study_kind', 'pairing', 'arms'))
 _COMMITMENTS = ('input_sha256', 'proposal_sha256', 'initial_state_sha256',

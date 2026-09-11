@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import shadow
+from .native_context import configure_native_context
 from .native_tool_contract import TOOL_POLICY_VERSIONS
 from .native_reasoning import (binary_reasoning, compatibility_reasoning, reasoning_enabled,
                                reasoning_request_evidence, verify_binary_catalog)
@@ -303,6 +304,7 @@ def execute(config):
                                              'effort': policy['reasoning_effort']}},
                 ephemeral_system_prompt=prompt_frame(request), session_id=request['request_id'])
         with setup_phase(result, 'configure_agent'):
+            configure_native_context(agent, policy)
             agent.max_tokens = policy['max_tokens']
             agent.skip_background_review = True
             agent.request_overrides = native_request_overrides(policy)

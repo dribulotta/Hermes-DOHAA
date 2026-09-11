@@ -25,6 +25,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from . import collection, shadow
+from .native_context import fixed_context, validate_context_contract, expected_messages
 from .native_tool_contract import TOOL_POLICY_VERSIONS
 from .native_reasoning import (binary_reasoning, compatibility_reasoning, reasoning_enabled,
                                reasoning_request_evidence, verify_binary_catalog)
@@ -103,10 +104,13 @@ def validate_native_policy(data: bytes, expected_sha256: str):
         shadow._digest(policy.get('reasoning_model_sha256'))
     if compatibility_reasoning(policy):
         fields.update(('reasoning_intent', 'reasoning_contract'))
+    if fixed_context(policy):
+        fields.add('context_contract')
     shadow._fields(policy, fields)
     try:
         response_format_for_policy(policy)
         reasoning_enabled(policy)
+        validate_context_contract(policy)
     except ValueError as exc:
         raise NativePromptError('native_shadow.policy_invalid') from exc
     if (policy['bridge_sha256'] != native_bridge_sha256()
@@ -196,6 +200,13 @@ def validate_wire_request(data: bytes, logical: dict[str, Any], policy: dict[str
         (systems if message['role'] == 'system' else users).append(message['content'])
     if users != [logical['input']] or '\n'.join(systems).count(prompt_frame(logical)) != 1:
         raise NativePromptError('native_shadow.wire_messages')
+    if fixed_context(policy):
+        try:
+            validate_context_contract(policy)
+        except ValueError as exc:
+            raise NativePromptError('native_shadow.wire_messages') from exc
+        if messages != expected_messages(logical, prompt_frame(logical)):
+            raise NativePromptError('native_shadow.wire_messages')
     return raw
 
 
