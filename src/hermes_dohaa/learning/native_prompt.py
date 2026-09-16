@@ -26,7 +26,7 @@ from urllib.parse import urlsplit
 
 from . import collection, shadow
 from .native_context import fixed_context, validate_context_contract, expected_messages
-from .native_tool_contract import TOOL_POLICY_VERSIONS
+from .native_tool_contract import TERMINAL_POLICY_VERSIONS as TOOL_POLICY_VERSIONS
 from .native_reasoning import (binary_reasoning, compatibility_reasoning, reasoning_enabled,
                                reasoning_request_evidence, verify_binary_catalog)
 from .native_progress import MAX_PROGRESS_BYTES, ProgressChannel

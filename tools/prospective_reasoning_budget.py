@@ -110,6 +110,8 @@ def _profiles(raw,expected_sha256):
     for name in PROFILES:
         encoded=library['profiles'][name];data,_=_embedded(encoded)
         policy=native.validate_native_policy(data,encoded['document_sha256'])
+        if policy.get('schema_version') == 'hermes-native-evaluation-policy/1.0':
+            raise ValueError('evaluation_requires_separate_planner')
         if 'context_length' not in policy or 'response_contract' not in policy:
             raise ValueError('explicit_context_and_contract_required')
         if (binary_reasoning(policy)!=(version!='hermes-reasoning-profiles/1.0')
