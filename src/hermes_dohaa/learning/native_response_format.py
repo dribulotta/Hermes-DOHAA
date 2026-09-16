@@ -2,6 +2,8 @@
 
 from .native_tool_contract import TOOL_POLICY_VERSIONS, VERSION as TOOL_CONTRACT, tool_response_format
 from .native_reasoning import binary_reasoning, reasoning_enabled
+from .native_evaluation import (POLICY_VERSION as EVALUATION_POLICY_VERSION,
+                                CONTRACT as NUMERIC_CONTRACT, numeric_response_format)
 
 DOCUMENT_RESPONSE_CONTRACT = 'document-stream-proposal/1.0'
 BOOLEAN_RESPONSE_CONTRACT = 'shadow-boolean-answer/1.0'
@@ -54,6 +56,8 @@ def document_response_format():
 
 def response_format_for_policy(policy):
     version = policy.get('schema_version')
+    if version == EVALUATION_POLICY_VERSION and policy.get('response_contract') == NUMERIC_CONTRACT:
+        return numeric_response_format()
     if version == 'hermes-native-shadow-policy/1.0' and 'response_contract' not in policy:
         return None
     if (version in ('hermes-native-shadow-policy/1.1', 'hermes-native-shadow-policy/1.2')

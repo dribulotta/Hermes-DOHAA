@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from . import shadow
 from .native_context import configure_native_context
-from .native_tool_contract import TOOL_POLICY_VERSIONS
+from .native_tool_contract import TERMINAL_POLICY_VERSIONS as TOOL_POLICY_VERSIONS
 from .native_reasoning import (binary_reasoning, compatibility_reasoning, reasoning_enabled,
                                reasoning_request_evidence, verify_binary_catalog)
 from .native_progress import ProgressWriter

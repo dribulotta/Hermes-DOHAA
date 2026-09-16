@@ -53,12 +53,19 @@ CONTEXT_AUDITED_FILES = tuple(sorted((*INTEGRATED_AUDITED_FILES,
     'src/hermes_dohaa/learning/native_reasoning.py',
     'src/hermes_dohaa/learning/native_worker.py')))
 CONTEXT_AUDITED_SOURCE_SHA256 = '870e11405406ed247c29c79c50d985f522b9f35099026dd45cb3d87f7a0de2ec'
+# Separate source review for opt-in numeric evaluation. Existing tool contracts
+# retain their syntax/authority; this profile still cannot support quality claims.
+NUMERIC_AUDITED_FILES = tuple(sorted((*CONTEXT_AUDITED_FILES,
+    'src/hermes_dohaa/learning/native_evaluation.py',
+    'src/hermes_dohaa/learning/native_response_format.py')))
+NUMERIC_AUDITED_SOURCE_SHA256 = '48e91c5251e7da52d9d5fe7268e6f795ee54f718d40fa597d1598affbbb4a990'
 _PROFILES = {
     'verified-tool-admission/1.0': (AUDITED_FILES, AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.1': (INTEGRATED_AUDITED_FILES, INTEGRATED_AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.2': (INTEGRATED_AUDITED_FILES, BOUNDED_AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.3': (INTEGRATED_AUDITED_FILES, ADMISSION_AUDITED_SOURCE_SHA256),
     'verified-tool-admission/1.4': (CONTEXT_AUDITED_FILES, CONTEXT_AUDITED_SOURCE_SHA256),
+    'verified-tool-admission/1.5': (NUMERIC_AUDITED_FILES, NUMERIC_AUDITED_SOURCE_SHA256),
 }
 _PROTOCOL_FIELDS = frozenset(('schema_version', 'pipeline', 'outcome', 'study_kind', 'pairing', 'arms'))
 _COMMITMENTS = ('input_sha256', 'proposal_sha256', 'initial_state_sha256',

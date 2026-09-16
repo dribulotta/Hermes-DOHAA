@@ -2,6 +2,8 @@
 TOOL_POLICY_VERSION = "hermes-native-tool-policy/1.0"
 TOOL_POLICY_VERSIONS = (TOOL_POLICY_VERSION, 'hermes-native-tool-policy/1.1',
                         'hermes-native-tool-policy/1.2', 'hermes-native-tool-policy/1.3')
+from .native_evaluation import POLICY_VERSION as EVALUATION_POLICY_VERSION
+TERMINAL_POLICY_VERSIONS = (*TOOL_POLICY_VERSIONS, EVALUATION_POLICY_VERSION)
 VERSION = 'controlled-tool-proposal/1.0'
 MAX_BYTES = 16384
 MAX_INTEGER = 2**31 - 1

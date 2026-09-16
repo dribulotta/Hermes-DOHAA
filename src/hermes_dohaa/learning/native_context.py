@@ -6,6 +6,7 @@ worker's HOME, cwd, UID or filesystem isolation. The outgoing request guard
 separately enforces the entire message list, including ephemeral additions.
 """
 from types import MethodType
+from .native_evaluation import POLICY_VERSION as EVALUATION_POLICY_VERSION
 
 POLICY_VERSION = 'hermes-native-tool-policy/1.3'
 CONTRACT = 'fixed-native-json-context/1.0'
@@ -13,7 +14,7 @@ BASE_SYSTEM = 'Return only the requested final JSON object.'
 
 
 def fixed_context(policy):
-    return policy.get('schema_version') == POLICY_VERSION
+    return policy.get('schema_version') in (POLICY_VERSION, EVALUATION_POLICY_VERSION)
 
 
 def validate_context_contract(policy):

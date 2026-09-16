@@ -13,9 +13,9 @@ from tools import controlled_route_protocol as boundary
 
 # This checkout explicitly exercises the newly reviewed profile. The fixture
 # does not compute or substitute the expected source commitment at runtime.
-FIXTURE_PIPELINE = 'verified-tool-admission/1.4'
-FIXTURE_FILES = boundary.CONTEXT_AUDITED_FILES
-FIXTURE_SOURCE = boundary.CONTEXT_AUDITED_SOURCE_SHA256
+FIXTURE_PIPELINE = 'verified-tool-admission/1.5'
+FIXTURE_FILES = boundary.NUMERIC_AUDITED_FILES
+FIXTURE_SOURCE = boundary.NUMERIC_AUDITED_SOURCE_SHA256
 
 def encode(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
@@ -163,7 +163,8 @@ class RouteProtocolTests(unittest.TestCase):
                     ('verified-tool-admission/1.1', boundary.INTEGRATED_AUDITED_FILES, boundary.INTEGRATED_AUDITED_SOURCE_SHA256),
                     ('verified-tool-admission/1.2', boundary.INTEGRATED_AUDITED_FILES, boundary.BOUNDED_AUDITED_SOURCE_SHA256),
                     ('verified-tool-admission/1.3', boundary.INTEGRATED_AUDITED_FILES, boundary.ADMISSION_AUDITED_SOURCE_SHA256),
-                    ('verified-tool-admission/1.4', boundary.CONTEXT_AUDITED_FILES, boundary.CONTEXT_AUDITED_SOURCE_SHA256)]
+                    ('verified-tool-admission/1.4', boundary.CONTEXT_AUDITED_FILES, boundary.CONTEXT_AUDITED_SOURCE_SHA256),
+                    ('verified-tool-admission/1.5', boundary.NUMERIC_AUDITED_FILES, boundary.NUMERIC_AUDITED_SOURCE_SHA256)]
         for label, files, digest in profiles:
             raw = protocol(); raw['pipeline'] = label
             with patch.object(boundary, '_source_fingerprint', return_value=digest) as fingerprint:
@@ -207,7 +208,7 @@ class RouteProtocolTests(unittest.TestCase):
                     validate(raw)
 
     def test_untyped_or_unreviewed_profile_has_no_dynamic_fallback(self):
-        for label in (None, [], {}, True, 'verified-tool-admission/1.5'):
+        for label in (None, [], {}, True, 'verified-tool-admission/1.6'):
             raw = protocol(); raw['pipeline'] = label
             with self.assertRaisesRegex(boundary.ProtocolError, 'unsupported_pipeline'):
                 validate(raw)
